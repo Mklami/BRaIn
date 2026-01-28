@@ -1,4 +1,13 @@
 import json
+import sys
+import os
+from pathlib import Path
+
+# Add src directory to Python path
+script_dir = Path(__file__).parent.parent.parent.absolute()
+src_dir = script_dir / 'src'
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from tqdm import tqdm
 
@@ -17,7 +26,8 @@ def load_json_to_dict(file_path):
 
 
 def perform_search(project, sub_project, version, bug_title, bug_description, top_K_results=10):
-    searcher = Searcher('bench4bl')
+    # Use index name from config (defaults to 'defects4j' for Defects4J)
+    searcher = Searcher()  # Will use index from config file
     search_results = searcher.search_Extended(
         project=project,
         sub_project=sub_project,
@@ -31,6 +41,18 @@ def perform_search(project, sub_project, version, bug_title, bug_description, to
     return search_results
 
 
+# Initialize Py4J gateway (optional - will use fallback if unavailable)
+java_py4j_ast_parser = None
+try:
+    from py4j.java_gateway import JavaGateway
+    gateway = JavaGateway()  # connect to the JVM
+    java_py4j_ast_parser = gateway.entry_point.getJavaMethodParser()
+    print("Py4J Java parser connected successfully")
+except Exception as e:
+    print(f"Warning: Py4J Java server not available ({e}). Using fallback JavaSourceParser.")
+    java_py4j_ast_parser = None
+
+
 def search_result_ops(search_results):
     processed_results = []
     for result in search_results:
@@ -38,11 +60,17 @@ def search_result_ops(search_results):
         source_code = result['source_code']
         bm25_score = result['bm25_score']
 
-
-        json_result = java_py4j_ast_parser.processJavaFileContent(source_code)
+        # Try Py4J parser first, fallback to JavaSourceParser if unavailable
+        json_result = None
+        if java_py4j_ast_parser is not None:
+            try:
+                json_result = java_py4j_ast_parser.processJavaFileContent(source_code)
+            except Exception as e:
+                # Py4J connection failed, will use fallback
+                json_result = None
 
         if json_result is None or json_result == '':
-            # parse the source code if py4j fails
+            # parse the source code if py4j fails or is unavailable
             javaParser = JavaSourceParser(data=source_code)
             parsed_methods = javaParser.parse_methods()
 
@@ -83,19 +111,12 @@ def search_result_ops(search_results):
     return processed_results
 
 
-
-from py4j.java_gateway import JavaGateway
-
-gateway = JavaGateway()  # connect to the JVM
-java_py4j_ast_parser = gateway.entry_point.getJavaMethodParser()  # get the HelloWorld instance
-
-
-
 import html
 
 if __name__ == '__main__':
-    # sample_path = "D:\Research\Coding\Replication_Package\BRaIn\Data"
-    sample_path = "../../Data/Refined_B4BL.json"
+    # Use absolute path relative to script location
+    sample_path = script_dir / "Data" / "Refined_Defects4J.json"
+    sample_path = str(sample_path)
     # load the json to dictionary
     df = load_dataframe(sample_path)
 
@@ -136,7 +157,8 @@ if __name__ == '__main__':
             bug['es_results'] = processed_results
 
         # save the json to a file
-        json_save_path = "D:\Research\Coding\QueryReformulation_MAIN\Output\Expansion_Query\cached_methods\Chunked_50_2"
+        # Use relative path from project root
+        json_save_path = str(script_dir / "Output" / "Cache" / "Chunked_50")
         #use chunk_id to save the file
         JSON_File_IO.save_Dict_to_JSON(json_bugs, json_save_path, "Cache_Res50_C"+str(chunk_id)+".json")
         chunk_id += 1

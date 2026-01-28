@@ -1,8 +1,16 @@
 import hashlib
 import os
 import json
+import sys
+from pathlib import Path
 from tqdm import tqdm
 from scipy.special import softmax
+
+# Add src directory to Python path
+script_dir = Path(__file__).parent.parent.parent.absolute()
+src_dir = script_dir / 'src'
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from IR import Searcher
 from IR_Reretrieval import Searcher_RE

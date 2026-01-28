@@ -1,7 +1,15 @@
 import re
+import sys
 from collections import defaultdict
+from pathlib import Path
 
 import networkx as nx
+
+# Add src directory to Python path
+script_dir = Path(__file__).parent.parent.parent.absolute()
+src_dir = script_dir / 'src'
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from Utils.NLP.TextPreprocessor import TextPreprocessor
 

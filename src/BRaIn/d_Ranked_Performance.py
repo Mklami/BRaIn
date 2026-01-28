@@ -1,4 +1,12 @@
+import sys
+from pathlib import Path
 from tqdm import tqdm
+
+# Add src directory to Python path
+script_dir = Path(__file__).parent.parent.parent.absolute()
+src_dir = script_dir / 'src'
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from Utils import Performance_Evaluator
 from Utils.IO import JSON_File_IO

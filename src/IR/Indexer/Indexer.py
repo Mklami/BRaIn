@@ -64,16 +64,53 @@ class Indexer:
         self.bulk_index_array.append(indexable_document)
 
         if len(self.bulk_index_array) >= bulk_size:
-            helpers.bulk(self.es_client, actions=self.bulk_action())
-            print(f"Indexed {bulk_size} documents in bulk.")
-            self.bulk_index_array = []
+            try:
+                result = helpers.bulk(self.es_client, actions=self.bulk_action(), raise_on_error=False, stats_only=False)
+                # helpers.bulk returns (success_count, failed_items) tuple
+                if isinstance(result, tuple) and len(result) == 2:
+                    success_count, failed_items = result
+                    if failed_items:
+                        print(f"Warning: {len(failed_items)} documents failed to index in bulk operation")
+                        # Print first few errors for debugging
+                        for error in failed_items[:3]:
+                            error_info = error.get('index', {}).get('error', {})
+                            error_msg = error_info.get('reason', 'Unknown error') if isinstance(error_info, dict) else str(error_info)
+                            print(f"  Error: {error_msg}")
+                    else:
+                        print(f"Indexed {success_count} documents in bulk.")
+                else:
+                    # Fallback if return format is different
+                    print(f"Indexed batch of {bulk_size} documents.")
+            except Exception as e:
+                print(f"Error in bulk indexing: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                self.bulk_index_array = []
 
 
     def refresh(self):
         if len(self.bulk_index_array) > 0:
-            helpers.bulk(self.es_client, actions=self.bulk_action())
-            print(f"Indexed {len(self.bulk_index_array)} documents in bulk.")
-            self.bulk_index_array = []
+            try:
+                result = helpers.bulk(self.es_client, actions=self.bulk_action(), raise_on_error=False, stats_only=False)
+                if isinstance(result, tuple) and len(result) == 2:
+                    success_count, failed_items = result
+                    if failed_items:
+                        print(f"Warning: {len(failed_items)} documents failed to index in final flush")
+                        for error in failed_items[:3]:
+                            error_info = error.get('index', {}).get('error', {})
+                            error_msg = error_info.get('reason', 'Unknown error') if isinstance(error_info, dict) else str(error_info)
+                            print(f"  Error: {error_msg}")
+                    else:
+                        print(f"Indexed {success_count} documents in final flush.")
+                else:
+                    print(f"Indexed {len(self.bulk_index_array)} documents in final flush.")
+            except Exception as e:
+                print(f"Error in final bulk indexing: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                self.bulk_index_array = []
 
         self.es_client.indices.refresh(index=self.index_name)
 
