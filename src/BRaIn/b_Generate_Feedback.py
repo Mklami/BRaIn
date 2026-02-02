@@ -24,6 +24,30 @@ def load_json_to_dict(file_path):
     return JSON_File_IO.load_JSON_to_Dict(file_path)
 
 
+def truncate_prompt(tokenizer, prompt, max_tokens=7500):
+    """
+    Truncate a prompt to fit within max_tokens.
+    If the prompt is too long, it will be truncated from the end (code segment).
+    """
+    # Tokenize to check length
+    tokens = tokenizer.encode(prompt, add_special_tokens=False)
+    
+    if len(tokens) <= max_tokens:
+        return prompt
+    
+    # If too long, truncate from the end
+    # Keep the beginning (instructions, bug report) and truncate the code segment
+    truncated_tokens = tokens[:max_tokens]
+    truncated_prompt = tokenizer.decode(truncated_tokens, skip_special_tokens=True)
+    
+    # Add a note that truncation occurred
+    if "[Code truncated]" not in truncated_prompt:
+        # Try to add truncation marker before the last part
+        truncated_prompt += "\n[Code truncated due to length limit]"
+    
+    return truncated_prompt
+
+
 def llm_scoring(es_results, bug_title, bug_description, llm, model_path):
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
@@ -64,6 +88,10 @@ Analyze the following bug report and code segment for relevance:"""
 
             # now, create the prompt
             prompt = user_text + '\n\n' + bug_report + '\n\n' + code_context + '\n\n' + instruction + '\n###'
+            
+            # Truncate prompt if it's too long (leave buffer for model output)
+            # Use 7500 tokens max to leave room for response
+            prompt = truncate_prompt(tokenizer, prompt, max_tokens=7500)
 
             chat = [
                 {"role": "user", "content": prompt},
@@ -152,11 +180,15 @@ if __name__ == '__main__':
     
     # GPTQ models require dtype="half" (float16), not bfloat16
     # Try different loading strategies for GPTQ models
+    # Note: max_model_len is set to 8192 (Mistral-7B's context length)
+    # Prompts are truncated to 7500 tokens to leave room for responses
+    MAX_MODEL_LEN = 8192
+    
     # Strategy 1: Let vLLM auto-detect GPTQ (recommended)
     try:
         print("Attempting to load with auto-detection (dtype=half)...")
         llm = LLM(model=MODEL_PATH, dtype="half",
-                  max_model_len=8192, trust_remote_code=True)
+                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
         print("Model loaded successfully with auto-detection!")
     except Exception as e1:
         print(f"Auto-detection failed: {e1}")
@@ -164,7 +196,7 @@ if __name__ == '__main__':
         try:
             print("Trying with explicit 'gptq' quantization (dtype=half)...")
             llm = LLM(model=MODEL_PATH, quantization="gptq", dtype="half",
-                      max_model_len=8192, trust_remote_code=True)
+                      max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
             print("Model loaded successfully with explicit GPTQ!")
         except Exception as e2:
             print(f"Explicit GPTQ failed: {e2}")
@@ -173,7 +205,7 @@ if __name__ == '__main__':
                 print("Trying with explicit float16 dtype...")
                 import torch
                 llm = LLM(model=MODEL_PATH, quantization="gptq", dtype=torch.float16,
-                          max_model_len=8192, trust_remote_code=True)
+                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
                 print("Model loaded successfully with torch.float16!")
             except Exception as e3:
                 print(f"\nAll loading strategies failed.")
@@ -193,7 +225,7 @@ if __name__ == '__main__':
                         try:
                             print(f"Trying HuggingFace model: {hf_model_id}")
                             llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
-                                      max_model_len=8192, trust_remote_code=True)
+                                      max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
                             print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
                             break
                         except Exception as hf_error:
