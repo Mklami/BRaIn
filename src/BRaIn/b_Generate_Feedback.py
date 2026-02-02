@@ -97,6 +97,7 @@ Analyze the following bug report and code segment for relevance:"""
 
 
 import html
+import os
 
 # ============================================================================
 # CONFIGURATION: Update these paths before running
@@ -106,8 +107,47 @@ import html
 MODEL_PATH = "/home/m.lami/BRaIn/src/BRaIn/Mistral-7B-Instruct-v0.2-GPTQ"
 
 if __name__ == '__main__':
-    llm = LLM(model=MODEL_PATH, quantization="GPTQ", dtype="half",
-              max_model_len=8192)
+    # Validate model path exists
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model path does not exist: {MODEL_PATH}")
+    
+    config_path = os.path.join(MODEL_PATH, "config.json")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"config.json not found in model directory: {config_path}")
+    
+    print(f"Loading model from: {MODEL_PATH}")
+    
+    # Try different loading strategies for GPTQ models
+    # Strategy 1: Let vLLM auto-detect GPTQ (recommended)
+    try:
+        print("Attempting to load with auto-detection...")
+        llm = LLM(model=MODEL_PATH, dtype="half",
+                  max_model_len=8192, trust_remote_code=True)
+        print("Model loaded successfully with auto-detection!")
+    except Exception as e1:
+        print(f"Auto-detection failed: {e1}")
+        # Strategy 2: Explicit GPTQ quantization (lowercase)
+        try:
+            print("Trying with explicit 'gptq' quantization...")
+            llm = LLM(model=MODEL_PATH, quantization="gptq", dtype="half",
+                      max_model_len=8192, trust_remote_code=True)
+            print("Model loaded successfully with explicit GPTQ!")
+        except Exception as e2:
+            print(f"Explicit GPTQ failed: {e2}")
+            # Strategy 3: Try without dtype specification
+            try:
+                print("Trying without dtype specification...")
+                llm = LLM(model=MODEL_PATH, quantization="gptq",
+                          max_model_len=8192, trust_remote_code=True)
+                print("Model loaded successfully without dtype!")
+            except Exception as e3:
+                print(f"All loading strategies failed. Last error: {e3}")
+                raise RuntimeError("Failed to load model with all strategies. "
+                                 "Please check:\n"
+                                 "1. Model directory contains config.json\n"
+                                 "2. Model files are complete and not corrupted\n"
+                                 "3. vLLM version supports this GPTQ format\n"
+                                 "4. Model architecture is compatible with vLLM") from e3
 
     # Read from the cached output from a_Cache_initial_search_files.py
     # This should point to the output file(s) from the caching step
