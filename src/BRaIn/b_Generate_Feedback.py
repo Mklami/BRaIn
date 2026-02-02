@@ -106,7 +106,7 @@ import html
 MODEL_PATH = "/home/m.lami/BRaIn/src/BRaIn/Mistral-7B-Instruct-v0.2-GPTQ"
 
 if __name__ == '__main__':
-    llm = LLM(model="MODEL_PATH", quantization="GPTQ", dtype="half",
+    llm = LLM(model=MODEL_PATH, quantization="GPTQ", dtype="half",
               max_model_len=8192)
 
     # Read from the cached output from a_Cache_initial_search_files.py
