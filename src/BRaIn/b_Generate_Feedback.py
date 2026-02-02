@@ -24,8 +24,8 @@ def load_json_to_dict(file_path):
     return JSON_File_IO.load_JSON_to_Dict(file_path)
 
 
-def llm_scoring(es_results, bug_title, bug_description, llm):
-    tokenizer = AutoTokenizer.from_pretrained("MODEL_PATH")
+def llm_scoring(es_results, bug_title, bug_description, llm, model_path):
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
 
     user_role = {"role": "user", "content": ""}
     assistant_role = {"role": "assistant", "content": ""}
@@ -98,20 +98,23 @@ Analyze the following bug report and code segment for relevance:"""
 
 import html
 
+# ============================================================================
+# CONFIGURATION: Update these paths before running
+# ============================================================================
+# Model path: Use a GPTQ quantized model from HuggingFace
+# Example: "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+
 if __name__ == '__main__':
     llm = LLM(model="MODEL_PATH", quantization="GPTQ", dtype="half",
               max_model_len=8192)
 
-    sample_path = "SAVED_RESULTS_PATH"
+    # Read from the cached output from a_Cache_initial_search_files.py
+    # This should point to the output file(s) from the caching step
+    sample_path = str(script_dir / "Output" / "Cache" / "Chunked_50" / "Cache_Res50_C1.json")
 
     # load the json to dictionary
-    df = load_dataframe(sample_path)
-
-    # convert this to json string
-    json_string = JSON_File_IO.convert_Dataframe_to_JSON_string(df)
-
-    # iterate over the json string
-    json_bugs = json.loads(json_string)
+    json_bugs = load_json_to_dict(sample_path)
 
     # iterate over the json array
     for bug in tqdm(json_bugs, desc="Processing JSON Bugs"):
@@ -123,9 +126,10 @@ if __name__ == '__main__':
         version = bug['version']
         es_results = bug['es_results']
 
-        score_llm_results = llm_scoring(es_results, bug_title, bug_description, llm=llm)
+        score_llm_results = llm_scoring(es_results, bug_title, bug_description, llm=llm, model_path=MODEL_PATH)
 
         bug['es_results'] = score_llm_results
 
-    json_save_path = "../../Output/Intelligent_Feedback/"
+    # Save output to Intelligent_Feedback directory
+    json_save_path = str(script_dir / "Output" / "Intelligent_Feedback")
     JSON_File_IO.save_Dict_to_JSON(json_bugs, json_save_path, "Mistral_ZERO.json")
