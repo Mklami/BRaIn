@@ -103,7 +103,7 @@ import html
 # ============================================================================
 # Model path: Use a GPTQ quantized model from HuggingFace
 # Example: "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
-MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+MODEL_PATH = "/home/m.lami/BRaIn/src/BRaIn/Mistral-7B-Instruct-v0.2-GPTQ"
 
 if __name__ == '__main__':
     llm = LLM(model="MODEL_PATH", quantization="GPTQ", dtype="half",
