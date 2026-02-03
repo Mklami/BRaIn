@@ -1,5 +1,6 @@
 import json
 import sys
+import hashlib
 from pathlib import Path
 
 # Add src directory to Python path
@@ -22,6 +23,31 @@ def load_dataframe(file_path):
 
 def load_json_to_dict(file_path):
     return JSON_File_IO.load_JSON_to_Dict(file_path)
+
+
+def get_bug_id(bug):
+    """
+    Generate a unique identifier for a bug based on its key fields.
+    This allows us to track which bugs have been processed.
+    """
+    # Use project, sub_project, version, and bug_title to create unique ID
+    key_fields = f"{bug.get('project', '')}_{bug.get('sub_project', '')}_{bug.get('version', '')}_{bug.get('bug_title', '')}"
+    return hashlib.md5(key_fields.encode()).hexdigest()
+
+
+def is_bug_processed(bug, processed_bugs):
+    """
+    Check if a bug has already been processed by checking if es_results have LLM scores.
+    A bug is considered processed if any method in es_results has a relevance score.
+    """
+    es_results = bug.get('es_results', [])
+    for result in es_results:
+        methods = result.get('methods', {})
+        # Check if any method has a string value (yes/no/possible) instead of just method body
+        for method_name, method_value in methods.items():
+            if isinstance(method_value, str) and method_value in ['yes', 'no', 'possible']:
+                return True
+    return False
 
 
 def truncate_prompt(tokenizer, prompt, max_tokens=7500):
@@ -259,23 +285,88 @@ if __name__ == '__main__':
     # This should point to the output file(s) from the caching step
     sample_path = str(script_dir / "Output" / "Cache" / "Chunked_50" / "Cache_Res50_C1.json")
 
+    # Output file path
+    json_save_path = str(script_dir / "Output" / "Intelligent_Feedback")
+    output_file = Path(json_save_path) / "Mistral_ZERO.json"
+    
+    # Load existing output if it exists (for resume functionality)
+    processed_bugs = {}
+    if output_file.exists():
+        print(f"Found existing output file: {output_file}")
+        print("Loading existing results to resume from checkpoint...")
+        try:
+            existing_bugs = load_json_to_dict(str(output_file))
+            # Create a mapping of bug IDs to their processed state
+            for bug in existing_bugs:
+                bug_id = get_bug_id(bug)
+                if is_bug_processed(bug, {}):
+                    processed_bugs[bug_id] = bug
+            print(f"Found {len(processed_bugs)} already processed bugs. Will skip these and continue from where it stopped.")
+        except Exception as e:
+            print(f"Warning: Could not load existing output file: {e}")
+            print("Starting fresh...")
+            processed_bugs = {}
+    else:
+        print("No existing output file found. Starting fresh...")
+
     # load the json to dictionary
     json_bugs = load_json_to_dict(sample_path)
+    
+    # Track progress
+    total_bugs = len(json_bugs)
+    processed_count = 0
+    skipped_count = 0
+    new_count = 0
 
     # iterate over the json array
-    for bug in tqdm(json_bugs, desc="Processing JSON Bugs"):
-        # for bug in json_bugs:
-        bug_title = html.unescape(bug['bug_title'])
-        bug_description = html.unescape(bug['bug_description'])
-        project = bug['project']
-        sub_project = bug['sub_project']
-        version = bug['version']
-        es_results = bug['es_results']
+    for idx, bug in enumerate(tqdm(json_bugs, desc="Processing JSON Bugs")):
+        bug_id = get_bug_id(bug)
+        
+        # Check if this bug was already processed
+        if bug_id in processed_bugs:
+            # Update the bug with existing processed data
+            bug = processed_bugs[bug_id]
+            skipped_count += 1
+            continue
+        
+        # Check if bug is already processed (by checking es_results)
+        if is_bug_processed(bug, {}):
+            processed_bugs[bug_id] = bug
+            skipped_count += 1
+            continue
+        
+        # Process this bug
+        try:
+            bug_title = html.unescape(bug['bug_title'])
+            bug_description = html.unescape(bug['bug_description'])
+            project = bug['project']
+            sub_project = bug['sub_project']
+            version = bug['version']
+            es_results = bug['es_results']
 
-        score_llm_results = llm_scoring(es_results, bug_title, bug_description, llm=llm, model_path=MODEL_PATH)
+            score_llm_results = llm_scoring(es_results, bug_title, bug_description, llm=llm, model_path=MODEL_PATH)
 
-        bug['es_results'] = score_llm_results
+            bug['es_results'] = score_llm_results
+            processed_bugs[bug_id] = bug
+            new_count += 1
+            
+            # Save progress after each bug (checkpoint)
+            # This allows resuming if the script stops
+            JSON_File_IO.save_Dict_to_JSON(json_bugs, json_save_path, "Mistral_ZERO.json")
+            
+        except Exception as e:
+            print(f"\nError processing bug {idx+1}/{total_bugs} (project={bug.get('project', 'unknown')}): {e}")
+            print("Saving progress so far...")
+            # Save what we have so far
+            JSON_File_IO.save_Dict_to_JSON(json_bugs, json_save_path, "Mistral_ZERO.json")
+            # Re-raise to stop processing (or continue if you want to skip errors)
+            raise
 
-    # Save output to Intelligent_Feedback directory
-    json_save_path = str(script_dir / "Output" / "Intelligent_Feedback")
+    # Final save
+    print(f"\nProcessing complete!")
+    print(f"Total bugs: {total_bugs}")
+    print(f"Newly processed: {new_count}")
+    print(f"Skipped (already processed): {skipped_count}")
+    print(f"Processed in this run: {processed_count}")
     JSON_File_IO.save_Dict_to_JSON(json_bugs, json_save_path, "Mistral_ZERO.json")
+    print(f"Results saved to: {output_file}")
