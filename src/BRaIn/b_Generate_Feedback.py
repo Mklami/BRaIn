@@ -325,7 +325,7 @@ if __name__ == '__main__':
         # Check if this bug was already processed
         if bug_id in processed_bugs:
             # Update the bug with existing processed data
-            bug = processed_bugs[bug_id]
+            json_bugs[idx] = processed_bugs[bug_id]
             skipped_count += 1
             continue
         
