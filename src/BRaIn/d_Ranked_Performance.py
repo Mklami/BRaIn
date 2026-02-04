@@ -21,8 +21,15 @@ count_of_found_gt = 0
 if __name__ == '__main__':
 
     ##### train_test #####
-    json_path = "../../Output/Cache/Mistral_ZERO_sorted_cache.json"
-
+    # Use absolute path relative to script location
+    json_path = str(script_dir / "Output" / "Cache" / "Mistral_ZERO_sorted_cache.json")
+    
+    # Check if file exists, provide helpful error if not
+    if not Path(json_path).exists():
+        raise FileNotFoundError(
+            f"Input JSON not found at: {json_path}\n"
+            f"Expected it under Output/Cache/. Make sure you've run step 2c (c_PRF_Scoring_cache.py) first."
+        )
 
     # load the json to dictionary
     json_bugs = JSON_File_IO.load_JSON_to_Dict(json_path)
