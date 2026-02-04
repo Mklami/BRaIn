@@ -1,6 +1,8 @@
-import nltk
+import os
 import re
-from nltk.tokenize import word_tokenize
+from pathlib import Path
+
+import nltk
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.stem import WordNetLemmatizer
@@ -8,10 +10,26 @@ from nltk.stem import WordNetLemmatizer
 
 class TextPreprocessor:
     def __init__(self, use_stemmer=False, use_lemmatizer=False, remove_stopwords=True, return_tokens=True, remove_only_digits=True, remove_single_char=True, remove_SE_stop_words=False, lowercase=True):
-        # Download NLTK resources if not already downloaded
-        # nltk.download('punkt')
-        # nltk.download('stopwords')
-        self.stop_words = set(stopwords.words('english'))
+        # Ensure NLTK resources exist on the machine (server-friendly).
+        # If download is blocked (no network), fall back gracefully.
+        self.stop_words = set()
+        if remove_stopwords:
+            try:
+                self.stop_words = set(stopwords.words("english"))
+            except LookupError:
+                try:
+                    # Try to download into the user's NLTK_DATA dir if set, else default.
+                    nltk.download("stopwords", quiet=True)
+                    self.stop_words = set(stopwords.words("english"))
+                except Exception:
+                    # Last-resort fallback (keeps pipeline running even without NLTK data)
+                    self.stop_words = {
+                        "a", "an", "the", "and", "or", "but", "if", "while", "with", "to", "from",
+                        "of", "in", "on", "for", "as", "at", "by", "is", "are", "was", "were",
+                        "be", "been", "being", "it", "this", "that", "these", "those", "i", "you",
+                        "he", "she", "they", "we", "me", "him", "her", "them", "my", "your", "our",
+                        "their", "not", "no", "yes", "do", "does", "did", "doing", "done",
+                    }
         self.use_stemmer = use_stemmer
         self.use_lemmatizer = use_lemmatizer
         self.remove_stopwords = remove_stopwords
@@ -28,10 +46,16 @@ class TextPreprocessor:
             self.lemmatizer = WordNetLemmatizer()
 
         if self.remove_SE_stop_words:
-            # load java stop words from file to a list
-            path_stop = 'D:\Research\Coding\QueryReformulation_MAIN\QueryReformulation_LLM\src\\Utils\StopWords\java_stops.txt'
-            with open(path_stop, 'r') as file:
-                self.java_stop_words = file.read().split('\n')
+            # Load java stop words from repo file (portable path).
+            stop_path = (
+                Path(__file__).resolve().parent.parent / "StopWords" / "java_stops.txt"
+            )
+            try:
+                with open(stop_path, "r", encoding="utf-8") as file:
+                    self.java_stop_words = [w.strip() for w in file.read().splitlines() if w.strip()]
+            except FileNotFoundError:
+                # If missing, just disable SE stopword removal.
+                self.java_stop_words = []
 
     def preprocess(self, text):
         # Tokenize the text
