@@ -90,6 +90,15 @@ class TextRank:
         sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
         return [token for token, score in sorted_scores[:no_of_keywords]]
 
+    # Backwards-compatible alias used by some scripts.
+    def get_keywords_CodeRank_3(self, query, documents, no_of_keywords=10, window_size=20):
+        return self.get_keywords_CodeRank(
+            query=query,
+            documents=documents,
+            no_of_keywords=no_of_keywords,
+            window_size=window_size,
+        )
+
 
 
     def preprocess_text(self, text):
