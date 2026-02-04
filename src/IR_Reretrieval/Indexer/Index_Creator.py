@@ -1,3 +1,12 @@
+import sys
+from pathlib import Path
+
+# Add src directory to Python path
+script_dir = Path(__file__).parent.parent.parent.parent.absolute()
+src_dir = script_dir / 'src'
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
 from elasticsearch import Elasticsearch
 
 from IR_Reretrieval.config.ConfigLoader import ConfigLoader
@@ -15,7 +24,8 @@ from IR_Reretrieval.config.Elasic_Config_Loader import Elasic_Config_Loader
 class Index_Creator:
     def __init__(self):
         # Create an instance of ConfigLoader (config file will be loaded automatically)
-        self.config_loader = Elasic_Config_Loader("../config/IR_config_2.yaml")
+        # Elasic_Config_Loader defaults to IR_config_2.yaml in the config directory
+        self.config_loader = Elasic_Config_Loader()
         # self.general_config_loader = ConfigLoader("../config/IR_config.yaml")
 
         # Accessing configuration parameters using class methods
