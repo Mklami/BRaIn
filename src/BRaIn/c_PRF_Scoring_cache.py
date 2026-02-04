@@ -141,15 +141,23 @@ if __name__ == '__main__':
         # Filter reranked results based on tracked results
         score_dict_re = {k: v for k, v in score_dict_re.items() if k in track_results}
 
-        # Apply softmax to the reranked scores
-        try:
-            bm25_re_scores = softmax(list(score_dict_re.values()))
-            score_dict_re = dict(zip(score_dict_re.keys(), bm25_re_scores))
-        except Exception as e:
-            print("Error in softmax:", e)
-            continue
+        # If reranking returned nothing (common when ES index doesn't contain bug_id docs),
+        # fall back to using the original BM25 scores only.
+        if len(score_dict_re) == 0:
+            score_dict_re = {}
+        else:
+            # Apply softmax to the reranked scores
+            try:
+                bm25_re_scores = softmax(list(score_dict_re.values()))
+                score_dict_re = dict(zip(score_dict_re.keys(), bm25_re_scores))
+            except Exception as e:
+                print("Error in softmax (rerank scores):", e)
+                score_dict_re = {}
 
         # Calculate normalized scores
+        if len(bm25_scores) == 0:
+            # Nothing to score for this bug
+            continue
         scores = softmax(bm25_scores)
         score_dict = {}
 
