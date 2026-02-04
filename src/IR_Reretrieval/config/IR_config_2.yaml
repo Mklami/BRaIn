@@ -3,8 +3,9 @@ elasticsearch:
   port: 9200 # default: please don't change this if not necessary
 #  index_name: bench4bl_3 # NECESSARY: change this to your index name.
 #  index_name: bench4bl_full # NECESSARY: change this to your index name.
-  index_name: bench4bl_full_100_2 # NECESSARY: change this to your index name.
+#  index_name: bench4bl_full_100_2 # NECESSARY: change this to your index name.
 #  index_name: bench4bl_full_100 # NECESSARY: change this to your index name.
+  index_name: defects4j_reretrieval # NECESSARY: change this to your reretrieval index name.
 
 Fields:
   project: keyword

@@ -1,6 +1,14 @@
 from datetime import datetime
+import sys
+from pathlib import Path
 
 from tqdm import tqdm
+
+# Add src directory to Python path
+script_dir = Path(__file__).parent.parent.parent.parent.absolute()
+src_dir = script_dir / 'src'
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from IR import Searcher
 from IR_Reretrieval.Indexer.Indexer_RE import Indexer_RE
@@ -119,14 +127,26 @@ def index_with_embedding(df, top_K_to_SEARCH=50):
 #     JSON_File_IO.save_Dict_to_JSON(best_query_list, file_path=file_path, file_name=file_name)
 
 def main():
-    input_file_path = "D:\Research\Coding\Replication_Package\TransLocator\data\\bug_report_ds_refined_B4BL.json"
-
+    # Allow command-line argument or use default
+    if len(sys.argv) > 1:
+        input_file_path = sys.argv[1]
+    else:
+        # Default to Defects4J data file
+        input_file_path = str(script_dir / "Data" / "Refined_Defects4J.json")
+    
+    print(f"Loading bug data from: {input_file_path}")
     df = load_dataframe(input_file_path)
+    print(f"Loaded {len(df)} bugs")
 
+    print("Creating reretrieval index...")
+    print("This will:")
+    print("  1. Search the main index for each bug")
+    print("  2. Get top-N results")
+    print("  3. Index them into the reretrieval index with bug_id")
+    
     index_with_embedding(df, top_K_to_SEARCH=50)
 
-
-    print('Done')
+    print('Done! Reretrieval index created.')
 
 
 
