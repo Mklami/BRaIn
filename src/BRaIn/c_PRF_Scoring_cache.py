@@ -53,7 +53,12 @@ def re_search(bug_id, bug_title, bug_description, top_keywords, project, sub_pro
 if __name__ == '__main__':
     # Make paths robust to current working directory by resolving from repo root.
     # Repo root = <this file>/../../.. (same as script_dir above)
-    json_path = str(script_dir / "Output" / "Intelligent_Feedback" / "Mistral_ZERO_combined.json")
+    # Default input is the output of b_Generate_Feedback.py
+    # You can override via CLI: python src/BRaIn/c_PRF_Scoring_cache.py /path/to/file.json
+    if len(sys.argv) > 1:
+        json_path = sys.argv[1]
+    else:
+        json_path = str(script_dir / "Output" / "Intelligent_Feedback" / "Mistral_ZERO.json")
     with_test = True
 
     # Load JSON data into a dictionary
@@ -61,7 +66,8 @@ if __name__ == '__main__':
         raise FileNotFoundError(
             f"Input JSON not found at: {json_path}\n"
             "Expected it under Output/Intelligent_Feedback/. "
-            "If your file has a different name (e.g. Mistral_ZERO.json), update json_path."
+            "If your file has a different name, pass it as an argument:\n"
+            "  python src/BRaIn/c_PRF_Scoring_cache.py /path/to/your.json"
         )
     json_bugs = JSON_File_IO.load_JSON_to_Dict(json_path)
     json_bugs_refined = []
