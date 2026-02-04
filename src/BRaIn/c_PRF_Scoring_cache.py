@@ -51,10 +51,18 @@ def re_search(bug_id, bug_title, bug_description, top_keywords, project, sub_pro
 
 
 if __name__ == '__main__':
-    json_path = "../../Output/Intelligent_Feedback/Mistral_ZERO_combined.json"
+    # Make paths robust to current working directory by resolving from repo root.
+    # Repo root = <this file>/../../.. (same as script_dir above)
+    json_path = str(script_dir / "Output" / "Intelligent_Feedback" / "Mistral_ZERO_combined.json")
     with_test = True
 
     # Load JSON data into a dictionary
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(
+            f"Input JSON not found at: {json_path}\n"
+            "Expected it under Output/Intelligent_Feedback/. "
+            "If your file has a different name (e.g. Mistral_ZERO.json), update json_path."
+        )
     json_bugs = JSON_File_IO.load_JSON_to_Dict(json_path)
     json_bugs_refined = []
 
