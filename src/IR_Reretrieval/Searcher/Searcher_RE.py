@@ -1,5 +1,6 @@
 from elasticsearch import Elasticsearch
 import json
+import os
 
 from IR_Reretrieval.config.Elasic_Config_Loader import Elasic_Config_Loader
 
@@ -19,8 +20,11 @@ class Searcher_RE:
         elastic_search_port = config_loader.get_elastic_search_port()
         elastic_search_index = config_loader.get_index_name()
 
+        # Allow runtime override without editing YAML:
+        #   export BRAIN_ES_INDEX="your_index"
+        env_index = os.environ.get("BRAIN_ES_INDEX") or os.environ.get("BRAIn_ES_INDEX")
         if index_name is None:
-            self.index_name = elastic_search_index
+            self.index_name = env_index or elastic_search_index
         else:
             self.index_name = index_name
 
@@ -28,6 +32,21 @@ class Searcher_RE:
         self.es_client = Elasticsearch('http://' + elastic_search_host + ':' + str(elastic_search_port),
                                        # http_auth=("username", "password"),
                                        verify_certs=False, timeout=30)
+
+        # Fail fast with a helpful message if the index doesn't exist.
+        try:
+            if not self.es_client.indices.exists(index=self.index_name):
+                raise ValueError(
+                    f"Elasticsearch index not found: {self.index_name}\n"
+                    f"Configured index from IR_config_2.yaml: {elastic_search_index}\n"
+                    "Fix options:\n"
+                    "- Update `src/IR_Reretrieval/config/IR_config_2.yaml` -> elasticsearch.index_name\n"
+                    "- OR set env var for this run: export BRAIN_ES_INDEX='<existing_index>'\n"
+                    "- OR create the index by running the re-indexing/indexer pipeline."
+                )
+        except Exception:
+            # If ES is unreachable or permissions disallow exists() call, we'll surface it on first search.
+            pass
 
     # def search(self, query, top_K_results=10):
     #     search_query = {
