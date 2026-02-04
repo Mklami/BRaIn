@@ -43,9 +43,25 @@ class TextRank:
         # Calculate bias dict for query tokens
         for token in query_tokens:
             if token not in bias_dict:
+                # Guard against empty queries after preprocessing
+                if len(query_tokens) == 0:
+                    continue
                 tf_query = query_tokens.count(token) / len(query_tokens)
                 idf = self.IDF.get(token, 0)
                 bias_dict[token] = tf_query * idf
+
+        # If we couldn't build any personalization/bias (e.g., empty query), fall back.
+        if not bias_dict:
+            # Return most frequent query tokens (deduped) as a lightweight fallback.
+            seen = set()
+            fallback = []
+            for t in query_tokens:
+                if t not in seen:
+                    seen.add(t)
+                    fallback.append(t)
+                if len(fallback) >= no_of_keywords:
+                    break
+            return fallback
 
         document_token_indices = {}
         for doc_id, document in enumerate(document_tokens_by_document):
@@ -83,8 +99,39 @@ class TextRank:
                                                                            'weight'] + 1 if self.graph.has_edge(token,
                                                                                                                 camel_token) else 1)
 
+        # If graph ended up empty, PageRank will fail. Fall back gracefully.
+        if self.graph.number_of_nodes() == 0 or self.graph.number_of_edges() == 0:
+            seen = set()
+            fallback = []
+            for t in query_tokens:
+                if t not in seen and t in bias_dict:
+                    seen.add(t)
+                    fallback.append(t)
+                if len(fallback) >= no_of_keywords:
+                    break
+            return fallback
+
         # Compute PageRank scores
-        scores = nx.pagerank(self.graph, alpha=0.85, weight='weight', max_iter=1000, personalization=bias_dict)
+        try:
+            scores = nx.pagerank(
+                self.graph,
+                alpha=0.85,
+                weight="weight",
+                max_iter=1000,
+                personalization=bias_dict,
+            )
+        except ZeroDivisionError:
+            # Known failure mode when normalization constants are zero in scipy backend
+            # (e.g., due to degenerate personalization/graph).
+            seen = set()
+            fallback = []
+            for t in query_tokens:
+                if t not in seen and t in bias_dict:
+                    seen.add(t)
+                    fallback.append(t)
+                if len(fallback) >= no_of_keywords:
+                    break
+            return fallback
 
         # Return top keywords
         sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
