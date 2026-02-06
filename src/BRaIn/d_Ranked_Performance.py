@@ -36,6 +36,8 @@ if __name__ == '__main__':
 
     all_ground_truths = []
     all_search_results = []
+    localized_bugs = []  # Bugs that can be localized (GT found in top-10)
+    non_localized_bugs = []  # Bugs that cannot be localized (GT not found in top-10)
 
     for bug in tqdm(json_bugs, desc="Processing JSON Bugs"):
         bug_id = bug['bug_id']
@@ -54,11 +56,32 @@ if __name__ == '__main__':
 
         for result in es_results[:10]:
             file_url = result['file_url']
-
             search_results.append(file_url)
 
         all_ground_truths.append(ground_truths)
         all_search_results.append(search_results)
+        
+        # Track which bugs can/can't be localized
+        if checkGTExists(ground_truths, search_results):
+            localized_bugs.append({
+                'bug_id': bug_id,
+                'project': project,
+                'sub_project': sub_project,
+                'version': version,
+                'bug_title': bug_title[:100] if bug_title else '',  # Truncate for readability
+                'fixed_files': ground_truths,
+                'top_10_results': search_results
+            })
+        else:
+            non_localized_bugs.append({
+                'bug_id': bug_id,
+                'project': project,
+                'sub_project': sub_project,
+                'version': version,
+                'bug_title': bug_title[:100] if bug_title else '',
+                'fixed_files': ground_truths,
+                'top_10_results': search_results
+            })
 
     gt_tracker_by_count = {}
     sr_tracker_by_count = {}
@@ -102,5 +125,37 @@ if __name__ == '__main__':
     performance_evaluator = Performance_Evaluator()
     performance = performance_evaluator.evaluate_several(refined_gt, refined_sr, at_Ks=[1, 5, 10])
 
-    print(f"Whole Performance: {performance} Refined Total Bug Reports: {len(refined_gt)}")
+    print(f"\nWhole Performance: {performance} Refined Total Bug Reports: {len(refined_gt)}")
     print(f"Found Gt for {count_of_found_gt} number of files")
+    
+    # Save localized and non-localized bugs to files
+    output_dir = script_dir / "Output" / "Performance_Analysis"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    localized_path = str(output_dir / "localized_bugs.json")
+    non_localized_path = str(output_dir / "non_localized_bugs.json")
+    
+    JSON_File_IO.save_Dict_to_JSON(localized_bugs, str(output_dir), "localized_bugs.json", with_indent=True)
+    JSON_File_IO.save_Dict_to_JSON(non_localized_bugs, str(output_dir), "non_localized_bugs.json", with_indent=True)
+    
+    print(f"\n{'='*80}")
+    print(f"LOCALIZATION SUMMARY")
+    print(f"{'='*80}")
+    print(f"Total bugs analyzed: {len(json_bugs)}")
+    print(f"Successfully localized (GT in top-10): {len(localized_bugs)} ({len(localized_bugs)/len(json_bugs)*100:.1f}%)")
+    print(f"Not localized (GT not in top-10): {len(non_localized_bugs)} ({len(non_localized_bugs)/len(json_bugs)*100:.1f}%)")
+    print(f"\nResults saved to:")
+    print(f"  - Localized bugs: {localized_path}")
+    print(f"  - Non-localized bugs: {non_localized_path}")
+    
+    # Print sample of non-localized bugs
+    if non_localized_bugs:
+        print(f"\n{'='*80}")
+        print(f"SAMPLE OF NON-LOCALIZED BUGS (first 10):")
+        print(f"{'='*80}")
+        for i, bug in enumerate(non_localized_bugs[:10], 1):
+            print(f"\n{i}. Bug ID: {bug['bug_id']}")
+            print(f"   Project: {bug['project']} | Version: {bug['version']}")
+            print(f"   Title: {bug['bug_title']}")
+            print(f"   Fixed files: {bug['fixed_files']}")
+            print(f"   Top result: {bug['top_10_results'][0] if bug['top_10_results'] else 'N/A'}")
