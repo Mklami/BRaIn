@@ -223,86 +223,100 @@ if __name__ == '__main__':
     # Prompts are truncated to 7500 tokens to leave room for responses
     MAX_MODEL_LEN = 8192
     
-    # Strategy 1: Let vLLM auto-detect GPTQ (recommended)
+    # Check if MODEL_PATH is a local path that might have compatibility issues
+    is_local_path = os.path.exists(MODEL_PATH) and os.path.isdir(MODEL_PATH)
+    
+    # Strategy 1: Try HuggingFace first if local model has known issues
+    # (HuggingFace models are more likely to work due to better compatibility)
+    if is_local_path:
+        print("Local model path detected. Will try HuggingFace as fallback if local loading fails.")
+    
+    # Strategy 1: Let vLLM auto-detect GPTQ (recommended for local models)
+    llm = None
+    errors = []
     try:
         print("Attempting to load with auto-detection (dtype=half)...")
         llm = LLM(model=MODEL_PATH, dtype="half",
                   max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
         print("Model loaded successfully with auto-detection!")
     except Exception as e1:
-        print(f"Auto-detection failed: {e1}")
-        # Strategy 2: Explicit GPTQ quantization (lowercase)
-        try:
-            print("Trying with explicit 'gptq' quantization (dtype=half)...")
-            llm = LLM(model=MODEL_PATH, quantization="gptq", dtype="half",
-                      max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-            print("Model loaded successfully with explicit GPTQ!")
-        except Exception as e2:
-            print(f"Explicit GPTQ failed: {e2}")
-            # Strategy 3: Try with float16 explicitly (alternative to "half")
+        errors.append(("auto-detect", e1))
+        print(f"Auto-detection failed: {type(e1).__name__}: {str(e1)[:150]}")
+        
+        # If head_dim error, try HuggingFace immediately (local model likely incompatible)
+        if 'head_dim' in str(e1).lower() or 'nonetype' in str(e1).lower():
+            print("\nDetected head_dim error - local model may be incompatible with vLLM version.")
+            print("Trying HuggingFace model as alternative...")
+            hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
             try:
-                print("Trying with explicit float16 dtype...")
-                import torch
-                llm = LLM(model=MODEL_PATH, quantization="gptq", dtype=torch.float16,
+                print(f"Loading from HuggingFace: {hf_model_id}")
+                llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
                           max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                print("Model loaded successfully with torch.float16!")
-            except Exception as e3:
-                print(f"Explicit float16 failed: {e3}")
-                # Strategy 4: Try loading without explicit quantization (let vLLM auto-detect everything)
-                try:
-                    print("Trying without explicit quantization parameter (full auto-detect)...")
-                    llm = LLM(model=MODEL_PATH, dtype="half",
-                              max_model_len=MAX_MODEL_LEN, trust_remote_code=True, 
-                              gpu_memory_utilization=0.9)
-                    print("Model loaded successfully with full auto-detection!")
-                except Exception as e4:
-                    print(f"\nAll loading strategies failed.")
-                    print(f"Error 1 (auto-detect): {type(e1).__name__}: {str(e1)[:200]}")
-                    print(f"Error 2 (explicit gptq): {type(e2).__name__}: {str(e2)[:200]}")
-                    print(f"Error 3 (torch.float16): {type(e3).__name__}: {str(e3)[:200]}")
-                    print(f"Error 4 (full auto-detect): {type(e4).__name__}: {str(e4)[:200]}")
-                    
-                    # Try loading from HuggingFace hub as last resort (if MODEL_PATH looks like a local path)
-                    if MODEL_PATH.startswith('/') and ('head_dim' in str(e4).lower() or 'head_dim' in str(e3).lower()):
-                        print("\nAttempting to load from HuggingFace hub instead of local path...")
-                        # Try common HuggingFace model IDs for this model
-                        hf_model_ids = [
-                            "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ",
-                            "mistralai/Mistral-7B-Instruct-v0.2"
-                        ]
-                        for hf_model_id in hf_model_ids:
-                            try:
-                                print(f"Trying HuggingFace model: {hf_model_id}")
-                                llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
-                                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                                print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
-                                break
-                            except Exception as hf_error:
-                                print(f"Failed to load {hf_model_id}: {hf_error}")
-                                if hf_model_id == hf_model_ids[-1]:
-                                    raise RuntimeError(
-                                        "Failed to load model with all strategies including HuggingFace hub.\n\n"
-                                        "The 'head_dim is None' error suggests vLLM cannot parse the model config.\n\n"
-                                        "Troubleshooting steps:\n"
-                                        "1. Verify config.json exists and is valid: "
-                                        f"python -c \"import json; print(json.load(open('{config_path}')))\"\n"
-                                        "2. Check if model was downloaded completely (all files present)\n"
-                                        "3. Try updating vLLM: pip install --upgrade vllm\n"
-                                        "4. Verify vLLM supports this GPTQ format: "
-                                        "https://docs.vllm.ai/en/latest/models/quantization.html\n"
-                                        "5. Consider using AWQ quantization instead of GPTQ\n"
-                                        "6. Try loading the base model (non-quantized) to verify compatibility"
-                                    ) from hf_error
-                    else:
-                        raise RuntimeError(
-                            "Failed to load model with all strategies.\n\n"
-                            "The 'head_dim is None' error suggests vLLM cannot parse the model config.\n\n"
-                            "Troubleshooting steps:\n"
-                            "1. Verify config.json exists and is valid\n"
-                            "2. Check if model was downloaded completely\n"
-                            "3. Try updating vLLM: pip install --upgrade vllm\n"
-                            "4. Consider using a different quantization format (AWQ) or the base model"
-                        ) from e4
+                print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
+                # Update MODEL_PATH for tokenizer loading
+                MODEL_PATH = hf_model_id
+            except Exception as hf_error:
+                print(f"HuggingFace loading failed: {hf_error}")
+                errors.append(("huggingface", hf_error))
+        
+        # If HuggingFace didn't work or wasn't tried, continue with other strategies
+        if llm is None:
+            # Strategy 2: Explicit GPTQ quantization (lowercase)
+            try:
+                print("Trying with explicit 'gptq' quantization (dtype=half)...")
+                llm = LLM(model=MODEL_PATH, quantization="gptq", dtype="half",
+                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                print("Model loaded successfully with explicit GPTQ!")
+            except Exception as e2:
+                errors.append(("explicit_gptq", e2))
+                print(f"Explicit GPTQ failed: {type(e2).__name__}: {str(e2)[:150]}")
+                
+                # Strategy 3: Try HuggingFace if not already tried
+                if 'head_dim' in str(e2).lower() and is_local_path:
+                    print("\nTrying HuggingFace model as alternative...")
+                    hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+                    try:
+                        print(f"Loading from HuggingFace: {hf_model_id}")
+                        llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
+                                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                        print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
+                        MODEL_PATH = hf_model_id
+                    except Exception as hf_error2:
+                        errors.append(("huggingface", hf_error2))
+                        print(f"HuggingFace loading failed: {hf_error2}")
+                
+                # Strategy 4: Try with float16 explicitly
+                if llm is None:
+                    try:
+                        print("Trying with explicit float16 dtype...")
+                        import torch
+                        llm = LLM(model=MODEL_PATH, quantization="gptq", dtype=torch.float16,
+                                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                        print("Model loaded successfully with torch.float16!")
+                    except Exception as e3:
+                        errors.append(("torch_float16", e3))
+                        print(f"Explicit float16 failed: {type(e3).__name__}: {str(e3)[:150]}")
+    
+    # If all strategies failed, raise error with summary
+    if llm is None:
+        print(f"\n{'='*80}")
+        print("All loading strategies failed. Error summary:")
+        print(f"{'='*80}")
+        for strategy, error in errors:
+            print(f"{strategy}: {type(error).__name__}: {str(error)[:200]}")
+        
+        raise RuntimeError(
+            "Failed to load model with all strategies.\n\n"
+            "The 'head_dim is None' error suggests vLLM cannot parse the local model config,\n"
+            "even though config.json appears valid. This is a known vLLM/GPTQ compatibility issue.\n\n"
+            "SOLUTIONS:\n"
+            "1. Use HuggingFace model directly (recommended):\n"
+            "   Change MODEL_PATH to: 'TheBloke/Mistral-7B-Instruct-v0.2-GPTQ'\n"
+            "2. Re-download the model from HuggingFace to ensure all files are complete\n"
+            "3. Try a different vLLM version: pip install vllm==0.6.3.post1\n"
+            "4. Consider using AWQ quantization instead of GPTQ\n"
+            "5. Use the base (non-quantized) model if quantization is not critical"
+        )
 
     # Read from the cached output from a_Cache_initial_search_files.py
     # This should point to the output file(s) from the caching step
