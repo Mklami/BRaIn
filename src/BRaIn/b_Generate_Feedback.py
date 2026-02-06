@@ -204,6 +204,15 @@ if __name__ == '__main__':
     
     print(f"Loading model from: {MODEL_PATH}")
     
+    # Check for required model files
+    required_files = ['config.json', 'tokenizer_config.json']
+    gptq_files = [f for f in os.listdir(MODEL_PATH) if 'gptq' in f.lower() or f.endswith('.safetensors') or f.endswith('.bin')]
+    print(f"Found {len(gptq_files)} potential model weight files in directory")
+    if len(gptq_files) == 0:
+        print("WARNING: No model weight files found! Model may be incomplete.")
+    else:
+        print(f"Model weight files: {gptq_files[:5]}...")  # Show first 5
+    
     # GPTQ models require dtype="half" (float16), not bfloat16
     # Try different loading strategies for GPTQ models
     # Note: max_model_len is set to 8192 (Mistral-7B's context length)
@@ -234,52 +243,62 @@ if __name__ == '__main__':
                           max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
                 print("Model loaded successfully with torch.float16!")
             except Exception as e3:
-                print(f"\nAll loading strategies failed.")
-                print(f"Error 1 (auto-detect): {type(e1).__name__}: {str(e1)[:200]}")
-                print(f"Error 2 (explicit gptq): {type(e2).__name__}: {str(e2)[:200]}")
-                print(f"Error 3 (torch.float16): {type(e3).__name__}: {str(e3)[:200]}")
-                
-                # Try loading from HuggingFace hub as last resort (if MODEL_PATH looks like a local path)
-                if MODEL_PATH.startswith('/') and 'head_dim' in str(e3).lower():
-                    print("\nAttempting to load from HuggingFace hub instead of local path...")
-                    # Try common HuggingFace model IDs for this model
-                    hf_model_ids = [
-                        "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ",
-                        "mistralai/Mistral-7B-Instruct-v0.2"
-                    ]
-                    for hf_model_id in hf_model_ids:
-                        try:
-                            print(f"Trying HuggingFace model: {hf_model_id}")
-                            llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
-                                      max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                            print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
-                            break
-                        except Exception as hf_error:
-                            print(f"Failed to load {hf_model_id}: {hf_error}")
-                            if hf_model_id == hf_model_ids[-1]:
-                                raise RuntimeError(
-                                    "Failed to load model with all strategies including HuggingFace hub.\n\n"
-                                    "The 'head_dim is None' error suggests vLLM cannot parse the model config.\n\n"
-                                    "Troubleshooting steps:\n"
-                                    "1. Verify config.json exists and is valid: "
-                                    f"python -c \"import json; print(json.load(open('{config_path}')))\"\n"
-                                    "2. Check if model was downloaded completely (all files present)\n"
-                                    "3. Try updating vLLM: pip install --upgrade vllm\n"
-                                    "4. Verify vLLM supports this GPTQ format: "
-                                    "https://docs.vllm.ai/en/latest/models/quantization.html\n"
-                                    "5. Consider using AWQ quantization instead of GPTQ\n"
-                                    "6. Try loading the base model (non-quantized) to verify compatibility"
-                                ) from hf_error
-                else:
-                    raise RuntimeError(
-                        "Failed to load model with all strategies.\n\n"
-                        "The 'head_dim is None' error suggests vLLM cannot parse the model config.\n\n"
-                        "Troubleshooting steps:\n"
-                        "1. Verify config.json exists and is valid\n"
-                        "2. Check if model was downloaded completely\n"
-                        "3. Try updating vLLM: pip install --upgrade vllm\n"
-                        "4. Consider using a different quantization format (AWQ) or the base model"
-                    ) from e3
+                print(f"Explicit float16 failed: {e3}")
+                # Strategy 4: Try loading without explicit quantization (let vLLM auto-detect everything)
+                try:
+                    print("Trying without explicit quantization parameter (full auto-detect)...")
+                    llm = LLM(model=MODEL_PATH, dtype="half",
+                              max_model_len=MAX_MODEL_LEN, trust_remote_code=True, 
+                              gpu_memory_utilization=0.9)
+                    print("Model loaded successfully with full auto-detection!")
+                except Exception as e4:
+                    print(f"\nAll loading strategies failed.")
+                    print(f"Error 1 (auto-detect): {type(e1).__name__}: {str(e1)[:200]}")
+                    print(f"Error 2 (explicit gptq): {type(e2).__name__}: {str(e2)[:200]}")
+                    print(f"Error 3 (torch.float16): {type(e3).__name__}: {str(e3)[:200]}")
+                    print(f"Error 4 (full auto-detect): {type(e4).__name__}: {str(e4)[:200]}")
+                    
+                    # Try loading from HuggingFace hub as last resort (if MODEL_PATH looks like a local path)
+                    if MODEL_PATH.startswith('/') and ('head_dim' in str(e4).lower() or 'head_dim' in str(e3).lower()):
+                        print("\nAttempting to load from HuggingFace hub instead of local path...")
+                        # Try common HuggingFace model IDs for this model
+                        hf_model_ids = [
+                            "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ",
+                            "mistralai/Mistral-7B-Instruct-v0.2"
+                        ]
+                        for hf_model_id in hf_model_ids:
+                            try:
+                                print(f"Trying HuggingFace model: {hf_model_id}")
+                                llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
+                                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                                print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
+                                break
+                            except Exception as hf_error:
+                                print(f"Failed to load {hf_model_id}: {hf_error}")
+                                if hf_model_id == hf_model_ids[-1]:
+                                    raise RuntimeError(
+                                        "Failed to load model with all strategies including HuggingFace hub.\n\n"
+                                        "The 'head_dim is None' error suggests vLLM cannot parse the model config.\n\n"
+                                        "Troubleshooting steps:\n"
+                                        "1. Verify config.json exists and is valid: "
+                                        f"python -c \"import json; print(json.load(open('{config_path}')))\"\n"
+                                        "2. Check if model was downloaded completely (all files present)\n"
+                                        "3. Try updating vLLM: pip install --upgrade vllm\n"
+                                        "4. Verify vLLM supports this GPTQ format: "
+                                        "https://docs.vllm.ai/en/latest/models/quantization.html\n"
+                                        "5. Consider using AWQ quantization instead of GPTQ\n"
+                                        "6. Try loading the base model (non-quantized) to verify compatibility"
+                                    ) from hf_error
+                    else:
+                        raise RuntimeError(
+                            "Failed to load model with all strategies.\n\n"
+                            "The 'head_dim is None' error suggests vLLM cannot parse the model config.\n\n"
+                            "Troubleshooting steps:\n"
+                            "1. Verify config.json exists and is valid\n"
+                            "2. Check if model was downloaded completely\n"
+                            "3. Try updating vLLM: pip install --upgrade vllm\n"
+                            "4. Consider using a different quantization format (AWQ) or the base model"
+                        ) from e4
 
     # Read from the cached output from a_Cache_initial_search_files.py
     # This should point to the output file(s) from the caching step
