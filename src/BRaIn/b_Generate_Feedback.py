@@ -164,56 +164,69 @@ MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
 # MODEL_PATH = str(Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ")
 
 if __name__ == '__main__':
-    # Validate model path exists
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Model path does not exist: {MODEL_PATH}")
+    # Validate model path (only check file system if it's a local path)
+    is_huggingface_model = '/' in MODEL_PATH and not MODEL_PATH.startswith('/') and not os.path.exists(MODEL_PATH)
     
-    config_path = os.path.join(MODEL_PATH, "config.json")
-    if not os.path.exists(config_path):
-        raise FileNotFoundError(f"config.json not found in model directory: {config_path}")
+    if not is_huggingface_model:
+        # It's a local path, validate it exists
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(f"Model path does not exist: {MODEL_PATH}")
+        
+        config_path = os.path.join(MODEL_PATH, "config.json")
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"config.json not found in model directory: {config_path}")
+    else:
+        # It's a HuggingFace model ID, skip file system checks
+        print(f"Using HuggingFace model: {MODEL_PATH}")
+        config_path = None
     
-    # Validate config.json has required fields and inspect it
-    try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-        
-        print(f"Config file found. Model type: {config.get('model_type', 'UNKNOWN')}")
-        
-        required_fields = ['hidden_size', 'num_attention_heads', 'model_type']
-        missing_fields = [field for field in required_fields if field not in config]
-        if missing_fields:
-            print(f"WARNING: config.json is missing fields: {missing_fields}")
-            print(f"Available fields in config: {list(config.keys())[:10]}...")  # Show first 10 fields
-        else:
-            # Calculate head_dim to verify it can be computed
-            hidden_size = config.get('hidden_size')
-            num_heads = config.get('num_attention_heads')
-            if hidden_size and num_heads:
-                head_dim = hidden_size // num_heads
-                print(f"Model config validated: hidden_size={hidden_size}, "
-                      f"num_attention_heads={num_heads}, "
-                      f"head_dim={head_dim}")
+    # Validate config.json has required fields and inspect it (only for local models)
+    if config_path is not None:
+        try:
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            
+            print(f"Config file found. Model type: {config.get('model_type', 'UNKNOWN')}")
+            
+            required_fields = ['hidden_size', 'num_attention_heads', 'model_type']
+            missing_fields = [field for field in required_fields if field not in config]
+            if missing_fields:
+                print(f"WARNING: config.json is missing fields: {missing_fields}")
+                print(f"Available fields in config: {list(config.keys())[:10]}...")  # Show first 10 fields
             else:
-                print(f"WARNING: Cannot calculate head_dim - hidden_size={hidden_size}, num_attention_heads={num_heads}")
-        
-        # Check for GPTQ-specific fields
-        if 'quantization_config' in config:
-            print(f"Quantization config found: {config['quantization_config']}")
-    except json.JSONDecodeError as e:
-        raise ValueError(f"config.json is not valid JSON: {e}")
-    except Exception as e:
-        print(f"Warning: Could not validate config.json: {e}")
+                # Calculate head_dim to verify it can be computed
+                hidden_size = config.get('hidden_size')
+                num_heads = config.get('num_attention_heads')
+                if hidden_size and num_heads:
+                    head_dim = hidden_size // num_heads
+                    print(f"Model config validated: hidden_size={hidden_size}, "
+                          f"num_attention_heads={num_heads}, "
+                          f"head_dim={head_dim}")
+                else:
+                    print(f"WARNING: Cannot calculate head_dim - hidden_size={hidden_size}, num_attention_heads={num_heads}")
+            
+            # Check for GPTQ-specific fields
+            if 'quantization_config' in config:
+                print(f"Quantization config found: {config['quantization_config']}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"config.json is not valid JSON: {e}")
+        except Exception as e:
+            print(f"Warning: Could not validate config.json: {e}")
+    else:
+        print("Skipping local config validation (using HuggingFace model)")
     
     print(f"Loading model from: {MODEL_PATH}")
     
-    # Check for required model files
-    required_files = ['config.json', 'tokenizer_config.json']
-    gptq_files = [f for f in os.listdir(MODEL_PATH) if 'gptq' in f.lower() or f.endswith('.safetensors') or f.endswith('.bin')]
-    print(f"Found {len(gptq_files)} potential model weight files in directory")
-    if len(gptq_files) == 0:
-        print("WARNING: No model weight files found! Model may be incomplete.")
+    # Check for required model files (only for local models)
+    if not is_huggingface_model:
+        gptq_files = [f for f in os.listdir(MODEL_PATH) if 'gptq' in f.lower() or f.endswith('.safetensors') or f.endswith('.bin')]
+        print(f"Found {len(gptq_files)} potential model weight files in directory")
+        if len(gptq_files) == 0:
+            print("WARNING: No model weight files found! Model may be incomplete.")
+        else:
+            print(f"Model weight files: {gptq_files[:5]}...")  # Show first 5
     else:
-        print(f"Model weight files: {gptq_files[:5]}...")  # Show first 5
+        print("Using HuggingFace model - files will be downloaded automatically if needed")
     
     # GPTQ models require dtype="half" (float16), not bfloat16
     # Try different loading strategies for GPTQ models
