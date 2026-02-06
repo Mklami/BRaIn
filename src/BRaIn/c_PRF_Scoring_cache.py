@@ -187,5 +187,5 @@ if __name__ == '__main__':
         json_bugs_refined.append(bug)
 
     # Save the refined JSON data
-    save_file_path = "../../Output/Cache/"
+    save_file_path = str(script_dir / "Output" / "Cache")
     JSON_File_IO.save_Dict_to_JSON(json_bugs_refined, save_file_path, "Mistral_ZERO_sorted_cache.json", with_indent=True)
