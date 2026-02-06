@@ -158,12 +158,10 @@ import json
 # CONFIGURATION: Update these paths before running
 # ============================================================================
 # Model path: Use a GPTQ quantized model from HuggingFace
-# Can be a local path (relative to this script) or HuggingFace model ID
-# Example: "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ" (for HuggingFace)
-# Or: Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ" (for local)
-MODEL_PATH = str(Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ")
-# Alternative: Use HuggingFace model ID directly
-# MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+# RECOMMENDED: Use HuggingFace model ID directly (more reliable with vLLM)
+MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+# Alternative: Use local model (may have compatibility issues with some vLLM versions)
+# MODEL_PATH = str(Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ")
 
 if __name__ == '__main__':
     # Validate model path exists
@@ -243,21 +241,32 @@ if __name__ == '__main__':
         errors.append(("auto-detect", e1))
         print(f"Auto-detection failed: {type(e1).__name__}: {str(e1)[:150]}")
         
-        # If head_dim error, try HuggingFace immediately (local model likely incompatible)
+        # If head_dim error, try gptq_marlin (faster, more compatible) or HuggingFace
         if 'head_dim' in str(e1).lower() or 'nonetype' in str(e1).lower():
-            print("\nDetected head_dim error - local model may be incompatible with vLLM version.")
-            print("Trying HuggingFace model as alternative...")
-            hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+            print("\nDetected head_dim error - trying gptq_marlin (more compatible)...")
             try:
-                print(f"Loading from HuggingFace: {hf_model_id}")
-                llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
+                print("Trying with gptq_marlin quantization (recommended for GPTQ models)...")
+                llm = LLM(model=MODEL_PATH, quantization="gptq_marlin", dtype="half",
                           max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
-                # Update MODEL_PATH for tokenizer loading
-                MODEL_PATH = hf_model_id
-            except Exception as hf_error:
-                print(f"HuggingFace loading failed: {hf_error}")
-                errors.append(("huggingface", hf_error))
+                print("Model loaded successfully with gptq_marlin!")
+            except Exception as marlin_error:
+                print(f"gptq_marlin failed: {marlin_error}")
+                errors.append(("gptq_marlin", marlin_error))
+                
+                # Try HuggingFace as fallback
+                if MODEL_PATH.startswith('/') or not MODEL_PATH.startswith('TheBloke/'):
+                    print("\nTrying HuggingFace model as alternative...")
+                    hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+                    try:
+                        print(f"Loading from HuggingFace: {hf_model_id}")
+                        llm = LLM(model=hf_model_id, quantization="gptq_marlin", dtype="half",
+                                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                        print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
+                        # Update MODEL_PATH for tokenizer loading
+                        MODEL_PATH = hf_model_id
+                    except Exception as hf_error:
+                        print(f"HuggingFace loading failed: {hf_error}")
+                        errors.append(("huggingface", hf_error))
         
         # If HuggingFace didn't work or wasn't tried, continue with other strategies
         if llm is None:
@@ -271,19 +280,30 @@ if __name__ == '__main__':
                 errors.append(("explicit_gptq", e2))
                 print(f"Explicit GPTQ failed: {type(e2).__name__}: {str(e2)[:150]}")
                 
-                # Strategy 3: Try HuggingFace if not already tried
-                if 'head_dim' in str(e2).lower() and is_local_path:
-                    print("\nTrying HuggingFace model as alternative...")
-                    hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+                # Strategy 3: Try gptq_marlin (more compatible)
+                if 'head_dim' in str(e2).lower():
+                    print("\nTrying gptq_marlin quantization (more compatible with vLLM)...")
                     try:
-                        print(f"Loading from HuggingFace: {hf_model_id}")
-                        llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
+                        llm = LLM(model=MODEL_PATH, quantization="gptq_marlin", dtype="half",
                                   max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                        print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
-                        MODEL_PATH = hf_model_id
-                    except Exception as hf_error2:
-                        errors.append(("huggingface", hf_error2))
-                        print(f"HuggingFace loading failed: {hf_error2}")
+                        print("Model loaded successfully with gptq_marlin!")
+                    except Exception as marlin_error2:
+                        errors.append(("gptq_marlin", marlin_error2))
+                        print(f"gptq_marlin failed: {marlin_error2}")
+                        
+                        # Try HuggingFace if not already tried
+                        if (MODEL_PATH.startswith('/') or not MODEL_PATH.startswith('TheBloke/')) and is_local_path:
+                            print("\nTrying HuggingFace model as alternative...")
+                            hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+                            try:
+                                print(f"Loading from HuggingFace: {hf_model_id}")
+                                llm = LLM(model=hf_model_id, quantization="gptq_marlin", dtype="half",
+                                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                                print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
+                                MODEL_PATH = hf_model_id
+                            except Exception as hf_error2:
+                                errors.append(("huggingface", hf_error2))
+                                print(f"HuggingFace loading failed: {hf_error2}")
                 
                 # Strategy 4: Try with float16 explicitly
                 if llm is None:
