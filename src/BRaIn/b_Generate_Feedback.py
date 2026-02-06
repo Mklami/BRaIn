@@ -158,8 +158,12 @@ import json
 # CONFIGURATION: Update these paths before running
 # ============================================================================
 # Model path: Use a GPTQ quantized model from HuggingFace
-# Example: "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
-MODEL_PATH = "/home/m.lami/BRaIn/src/BRaIn/Mistral-7B-Instruct-v0.2-GPTQ"
+# Can be a local path (relative to this script) or HuggingFace model ID
+# Example: "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ" (for HuggingFace)
+# Or: Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ" (for local)
+MODEL_PATH = str(Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ")
+# Alternative: Use HuggingFace model ID directly
+# MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
 
 if __name__ == '__main__':
     # Validate model path exists
