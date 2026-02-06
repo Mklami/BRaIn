@@ -204,6 +204,15 @@ if __name__ == '__main__':
     
     print(f"Loading model from: {MODEL_PATH}")
     
+    # Check for required model files
+    required_files = ['config.json', 'tokenizer_config.json']
+    gptq_files = [f for f in os.listdir(MODEL_PATH) if 'gptq' in f.lower() or f.endswith('.safetensors') or f.endswith('.bin')]
+    print(f"Found {len(gptq_files)} potential model weight files in directory")
+    if len(gptq_files) == 0:
+        print("WARNING: No model weight files found! Model may be incomplete.")
+    else:
+        print(f"Model weight files: {gptq_files[:5]}...")  # Show first 5
+    
     # GPTQ models require dtype="half" (float16), not bfloat16
     # Try different loading strategies for GPTQ models
     # Note: max_model_len is set to 8192 (Mistral-7B's context length)
