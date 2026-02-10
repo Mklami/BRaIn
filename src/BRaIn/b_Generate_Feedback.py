@@ -159,7 +159,7 @@ import json
 # ============================================================================
 # Model path: Use a GPTQ quantized model from HuggingFace
 # RECOMMENDED: Use HuggingFace model ID directly (more reliable with vLLM)
-MODEL_PATH = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
+MODEL_PATH = "src/BRaIn/Mistral-7B-Instruct-v0.2-GPTQ"
 # Alternative: Use local model (may have compatibility issues with some vLLM versions)
 # MODEL_PATH = str(Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ")
 
