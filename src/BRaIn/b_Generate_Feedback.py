@@ -237,86 +237,66 @@ if __name__ == '__main__':
     # Check if MODEL_PATH is a local path that might have compatibility issues
     is_local_path = os.path.exists(MODEL_PATH) and os.path.isdir(MODEL_PATH)
     
-    # Strategy 1: Try HuggingFace first if local model has known issues
-    # (HuggingFace models are more likely to work due to better compatibility)
-    if is_local_path:
-        print("Local model path detected. Will try HuggingFace as fallback if local loading fails.")
-    
-    # Strategy 1: Let vLLM auto-detect GPTQ (recommended for local models)
+    # Strategy 1: Try gptq_marlin FIRST (most compatible with vLLM 0.6.3+)
+    # This is often the most reliable way to load GPTQ models
     llm = None
     errors = []
+    
+    print("Strategy 1: Trying gptq_marlin quantization (most compatible with vLLM)...")
     try:
-        print("Attempting to load with auto-detection (dtype=half)...")
-        llm = LLM(model=MODEL_PATH, dtype="half",
-                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-        print("Model loaded successfully with auto-detection!")
+        llm = LLM(model=MODEL_PATH, quantization="gptq_marlin", dtype="half",
+                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True, gpu_memory_utilization=0.9)
+        print("Model loaded successfully with gptq_marlin!")
     except Exception as e1:
-        errors.append(("auto-detect", e1))
-        print(f"Auto-detection failed: {type(e1).__name__}: {str(e1)[:150]}")
+        errors.append(("gptq_marlin", e1))
+        print(f"gptq_marlin failed: {type(e1).__name__}: {str(e1)[:200]}")
         
-        # If head_dim error, try gptq_marlin (faster, more compatible) or HuggingFace
-        if 'head_dim' in str(e1).lower() or 'nonetype' in str(e1).lower():
-            print("\nDetected head_dim error - trying gptq_marlin (more compatible)...")
-            try:
-                print("Trying with gptq_marlin quantization (recommended for GPTQ models)...")
-                llm = LLM(model=MODEL_PATH, quantization="gptq_marlin", dtype="half",
-                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                print("Model loaded successfully with gptq_marlin!")
-            except Exception as marlin_error:
-                print(f"gptq_marlin failed: {marlin_error}")
-                errors.append(("gptq_marlin", marlin_error))
-                
-                # Try HuggingFace as fallback
-                if MODEL_PATH.startswith('/') or not MODEL_PATH.startswith('TheBloke/'):
-                    print("\nTrying HuggingFace model as alternative...")
-                    hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
-                    try:
-                        print(f"Loading from HuggingFace: {hf_model_id}")
-                        llm = LLM(model=hf_model_id, quantization="gptq_marlin", dtype="half",
-                                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                        print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
-                        # Update MODEL_PATH for tokenizer loading
-                        MODEL_PATH = hf_model_id
-                    except Exception as hf_error:
-                        print(f"HuggingFace loading failed: {hf_error}")
-                        errors.append(("huggingface", hf_error))
-        
-        # If HuggingFace didn't work or wasn't tried, continue with other strategies
+        # Strategy 2: Try explicit GPTQ quantization
         if llm is None:
-            # Strategy 2: Explicit GPTQ quantization (lowercase)
+            print("\nStrategy 2: Trying explicit 'gptq' quantization...")
             try:
-                print("Trying with explicit 'gptq' quantization (dtype=half)...")
                 llm = LLM(model=MODEL_PATH, quantization="gptq", dtype="half",
-                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True, gpu_memory_utilization=0.9)
                 print("Model loaded successfully with explicit GPTQ!")
             except Exception as e2:
                 errors.append(("explicit_gptq", e2))
-                print(f"Explicit GPTQ failed: {type(e2).__name__}: {str(e2)[:150]}")
+                print(f"Explicit GPTQ failed: {type(e2).__name__}: {str(e2)[:200]}")
                 
-                # Strategy 3: Try gptq_marlin (more compatible)
-                if 'head_dim' in str(e2).lower():
-                    print("\nTrying gptq_marlin quantization (more compatible with vLLM)...")
+                # Strategy 3: Try auto-detection
+                if llm is None:
+                    print("\nStrategy 3: Trying auto-detection...")
                     try:
-                        llm = LLM(model=MODEL_PATH, quantization="gptq_marlin", dtype="half",
-                                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
-                        print("Model loaded successfully with gptq_marlin!")
-                    except Exception as marlin_error2:
-                        errors.append(("gptq_marlin", marlin_error2))
-                        print(f"gptq_marlin failed: {marlin_error2}")
+                        llm = LLM(model=MODEL_PATH, dtype="half",
+                                  max_model_len=MAX_MODEL_LEN, trust_remote_code=True, gpu_memory_utilization=0.9)
+                        print("Model loaded successfully with auto-detection!")
+                    except Exception as e3:
+                        errors.append(("auto-detect", e3))
+                        print(f"Auto-detection failed: {type(e3).__name__}: {str(e3)[:200]}")
                         
-                        # Try HuggingFace if not already tried
-                        if (MODEL_PATH.startswith('/') or not MODEL_PATH.startswith('TheBloke/')) and is_local_path:
-                            print("\nTrying HuggingFace model as alternative...")
+                        # Strategy 4: Try HuggingFace model (if using local path)
+                        if llm is None and is_local_path:
+                            print("\nStrategy 4: Trying HuggingFace model directly...")
                             hf_model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ"
                             try:
-                                print(f"Loading from HuggingFace: {hf_model_id}")
+                                print(f"Loading from HuggingFace: {hf_model_id} (gptq_marlin)...")
                                 llm = LLM(model=hf_model_id, quantization="gptq_marlin", dtype="half",
-                                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True)
+                                          max_model_len=MAX_MODEL_LEN, trust_remote_code=True, gpu_memory_utilization=0.9)
                                 print(f"Successfully loaded from HuggingFace: {hf_model_id}!")
                                 MODEL_PATH = hf_model_id
-                            except Exception as hf_error2:
-                                errors.append(("huggingface", hf_error2))
-                                print(f"HuggingFace loading failed: {hf_error2}")
+                            except Exception as hf_error1:
+                                errors.append(("huggingface_gptq_marlin", hf_error1))
+                                print(f"HuggingFace gptq_marlin failed: {type(hf_error1).__name__}: {str(hf_error1)[:200]}")
+                                
+                                # Try HuggingFace with explicit GPTQ
+                                try:
+                                    print(f"Trying HuggingFace with explicit GPTQ...")
+                                    llm = LLM(model=hf_model_id, quantization="gptq", dtype="half",
+                                              max_model_len=MAX_MODEL_LEN, trust_remote_code=True, gpu_memory_utilization=0.9)
+                                    print(f"Successfully loaded from HuggingFace with GPTQ: {hf_model_id}!")
+                                    MODEL_PATH = hf_model_id
+                                except Exception as hf_error2:
+                                    errors.append(("huggingface_gptq", hf_error2))
+                                    print(f"HuggingFace GPTQ failed: {type(hf_error2).__name__}: {str(hf_error2)[:200]}")
                 
                 # Strategy 4: Try with float16 explicitly
                 if llm is None:
@@ -330,26 +310,45 @@ if __name__ == '__main__':
                         errors.append(("torch_float16", e3))
                         print(f"Explicit float16 failed: {type(e3).__name__}: {str(e3)[:150]}")
     
-    # If all strategies failed, raise error with summary
+    # If all GPTQ strategies failed, try base model as last resort
     if llm is None:
         print(f"\n{'='*80}")
-        print("All loading strategies failed. Error summary:")
+        print("All GPTQ loading strategies failed. Error summary:")
         print(f"{'='*80}")
         for strategy, error in errors:
             print(f"{strategy}: {type(error).__name__}: {str(error)[:200]}")
         
-        raise RuntimeError(
-            "Failed to load model with all strategies.\n\n"
-            "The 'head_dim is None' error suggests vLLM cannot parse the local model config,\n"
-            "even though config.json appears valid. This is a known vLLM/GPTQ compatibility issue.\n\n"
-            "SOLUTIONS:\n"
-            "1. Use HuggingFace model directly (recommended):\n"
-            "   Change MODEL_PATH to: 'TheBloke/Mistral-7B-Instruct-v0.2-GPTQ'\n"
-            "2. Re-download the model from HuggingFace to ensure all files are complete\n"
-            "3. Try a different vLLM version: pip install vllm==0.6.3.post1\n"
-            "4. Consider using AWQ quantization instead of GPTQ\n"
-            "5. Use the base (non-quantized) model if quantization is not critical"
-        )
+        # Last resort: Try base (non-quantized) model
+        print(f"\n{'='*80}")
+        print("Attempting to load base (non-quantized) model as fallback...")
+        print("(This will use more memory but should work reliably)")
+        print(f"{'='*80}")
+        
+        base_model_id = "mistralai/Mistral-7B-Instruct-v0.2"
+        try:
+            print(f"Loading base model: {base_model_id} (no quantization)...")
+            llm = LLM(model=base_model_id, dtype="half",
+                      max_model_len=MAX_MODEL_LEN, trust_remote_code=True, gpu_memory_utilization=0.9)
+            print(f"Successfully loaded base model: {base_model_id}!")
+            MODEL_PATH = base_model_id
+        except Exception as base_error:
+            print(f"Base model also failed: {type(base_error).__name__}: {str(base_error)[:200]}")
+            
+            raise RuntimeError(
+                "Failed to load model with all strategies (including base model).\n\n"
+                "The 'head_size is None' error indicates vLLM cannot determine the attention head size\n"
+                "from the GPTQ model config. This is a known vLLM/GPTQ compatibility issue with vLLM 0.6.3+.\n\n"
+                "SOLUTIONS (try in order):\n"
+                "1. Try a different vLLM version (most likely to fix this):\n"
+                "   pip install vllm==0.5.5 --force-reinstall --no-cache-dir\n"
+                "   OR\n"
+                "   pip install vllm==0.6.0 --force-reinstall --no-cache-dir\n"
+                "2. Check vLLM GitHub issues for GPTQ head_size fixes:\n"
+                "   https://github.com/vllm-project/vllm/issues\n"
+                "3. Try AWQ quantization instead of GPTQ:\n"
+                "   MODEL_PATH = 'TheBloke/Mistral-7B-Instruct-v0.2-AWQ'\n"
+                "   quantization='awq'"
+            )
 
     # Read from the cached output from a_Cache_initial_search_files.py
     # This should point to the output file(s) from the caching step
