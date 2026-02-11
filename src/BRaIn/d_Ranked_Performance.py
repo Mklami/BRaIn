@@ -125,18 +125,6 @@ if __name__ == '__main__':
     performance_evaluator = Performance_Evaluator()
     performance = performance_evaluator.evaluate_several(refined_gt, refined_sr, at_Ks=[1, 5, 10])
 
-    print(f"\n{'='*80}")
-    print(f"OVERALL PERFORMANCE (All Bugs)")
-    print(f"{'='*80}")
-    print(f"Total bug reports analyzed: {len(refined_gt)}")
-    print(f"Bugs with GT found in top-10: {count_of_found_gt} ({count_of_found_gt/len(refined_gt)*100:.1f}%)")
-    print(f"\nMetrics:")
-    print(f"  MAP:     {performance.get('map', 0):.4f}")
-    print(f"  MRR:     {performance.get('mrr', 0):.4f}")
-    print(f"  HIT@1:   {performance.get('hit@1', 0):.4f}")
-    print(f"  HIT@5:   {performance.get('hit@5', 0):.4f}")
-    print(f"  HIT@10:  {performance.get('hit@10', 0):.4f}")
-    print(f"{'='*80}")
     
     # Save localized and non-localized bugs to files
     output_dir = script_dir / "Output" / "Performance_Analysis"
@@ -169,3 +157,16 @@ if __name__ == '__main__':
             print(f"   Title: {bug['bug_title']}")
             print(f"   Fixed files: {bug['fixed_files']}")
             print(f"   Top result: {bug['top_10_results'][0] if bug['top_10_results'] else 'N/A'}")
+    
+    print(f"\n{'='*80}")
+    print(f"OVERALL PERFORMANCE (All Bugs)")
+    print(f"{'='*80}")
+    print(f"Total bug reports analyzed: {len(refined_gt)}")
+    print(f"Bugs with GT found in top-10: {count_of_found_gt} ({count_of_found_gt/len(refined_gt)*100:.1f}%)")
+    print(f"\nMetrics:")
+    print(f"  MAP:     {performance.get('map', 0):.4f}")
+    print(f"  MRR:     {performance.get('mrr', 0):.4f}")
+    print(f"  HIT@1:   {performance.get('hit@1', 0):.4f}")
+    print(f"  HIT@5:   {performance.get('hit@5', 0):.4f}")
+    print(f"  HIT@10:  {performance.get('hit@10', 0):.4f}")
+    print(f"{'='*80}")
