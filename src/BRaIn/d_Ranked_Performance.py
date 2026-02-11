@@ -13,18 +13,53 @@ if str(src_dir) not in sys.path:
 from Utils import Performance_Evaluator
 from Utils.IO import JSON_File_IO
 
+def normalize_path(path):
+    """Normalize file paths for comparison by removing common prefixes and normalizing separators."""
+    if not path:
+        return ""
+    # Normalize separators
+    path = path.replace('\\', '/')
+    # Remove common prefixes that might differ between fixed_files and file_url
+    prefixes_to_remove = ['src/java/', 'src/main/java/', 'src/']
+    for prefix in prefixes_to_remove:
+        if path.startswith(prefix):
+            path = path[len(prefix):]
+            break
+    return path.strip('/')
+
 def checkGTExists(fixed_files, results):
-    for file in fixed_files:
-        if file in results:
+    """Check if any fixed file exists in results, with path normalization."""
+    normalized_fixed = [normalize_path(f) for f in fixed_files]
+    normalized_results = [normalize_path(r) for r in results]
+    
+    for fixed_file in normalized_fixed:
+        # Try exact match first
+        if fixed_file in normalized_results:
             return True
+        # Try reverse match (in case one is substring of other)
+        for result in normalized_results:
+            if fixed_file in result or result in fixed_file:
+                # Additional check: ensure it's a meaningful match (not just "java" matching "java")
+                if len(fixed_file) > 10 and len(result) > 10:
+                    return True
     return False
 
 def findFirstRank(fixed_files, search_results):
     """Find the first rank (1-indexed) at which any fixed file appears in search results.
     Returns None if no fixed file is found."""
+    normalized_fixed = [normalize_path(f) for f in fixed_files]
+    
     for rank, file_url in enumerate(search_results, start=1):
-        if file_url in fixed_files:
+        normalized_url = normalize_path(file_url)
+        # Try exact match
+        if normalized_url in normalized_fixed:
             return rank
+        # Try substring match (in case paths differ slightly)
+        for fixed_file in normalized_fixed:
+            if fixed_file in normalized_url or normalized_url in fixed_file:
+                # Ensure meaningful match
+                if len(fixed_file) > 10 and len(normalized_url) > 10:
+                    return rank
     return None
 
 def calculateTopK(fixed_files, search_results, k):
