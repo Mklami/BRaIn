@@ -1,6 +1,8 @@
 import sys
+import csv
 from pathlib import Path
 from tqdm import tqdm
+from datetime import datetime
 
 # Add src directory to Python path
 script_dir = Path(__file__).parent.parent.parent.absolute()
@@ -16,6 +18,19 @@ def checkGTExists(fixed_files, results):
         if file in results:
             return True
     return False
+
+def findFirstRank(fixed_files, search_results):
+    """Find the first rank (1-indexed) at which any fixed file appears in search results.
+    Returns None if no fixed file is found."""
+    for rank, file_url in enumerate(search_results, start=1):
+        if file_url in fixed_files:
+            return rank
+    return None
+
+def calculateTopK(fixed_files, search_results, k):
+    """Check if any fixed file appears in top-k results. Returns 1 if yes, 0 if no."""
+    top_k_results = search_results[:k]
+    return 1 if checkGTExists(fixed_files, top_k_results) else 0
 
 count_of_found_gt = 0
 if __name__ == '__main__':
@@ -61,27 +76,29 @@ if __name__ == '__main__':
         all_ground_truths.append(ground_truths)
         all_search_results.append(search_results)
         
+        # Find the rank at which this bug was localized
+        first_rank = findFirstRank(ground_truths, search_results)
+        is_localized = first_rank is not None
+        
+        bug_data = {
+            'bug_id': bug_id,
+            'project': project,
+            'sub_project': sub_project,
+            'version': version,
+            'bug_title': bug_title[:100] if bug_title else '',
+            'fixed_files': ground_truths,
+            'top_10_results': search_results,
+            'rank': first_rank,  # None if not localized, otherwise 1-indexed rank
+            'top@1': calculateTopK(ground_truths, search_results, 1),
+            'top@5': calculateTopK(ground_truths, search_results, 5),
+            'top@10': calculateTopK(ground_truths, search_results, 10)
+        }
+        
         # Track which bugs can/can't be localized
-        if checkGTExists(ground_truths, search_results):
-            localized_bugs.append({
-                'bug_id': bug_id,
-                'project': project,
-                'sub_project': sub_project,
-                'version': version,
-                'bug_title': bug_title[:100] if bug_title else '',  # Truncate for readability
-                'fixed_files': ground_truths,
-                'top_10_results': search_results
-            })
+        if is_localized:
+            localized_bugs.append(bug_data)
         else:
-            non_localized_bugs.append({
-                'bug_id': bug_id,
-                'project': project,
-                'sub_project': sub_project,
-                'version': version,
-                'bug_title': bug_title[:100] if bug_title else '',
-                'fixed_files': ground_truths,
-                'top_10_results': search_results
-            })
+            non_localized_bugs.append(bug_data)
 
     gt_tracker_by_count = {}
     sr_tracker_by_count = {}
@@ -169,4 +186,95 @@ if __name__ == '__main__':
     print(f"  HIT@1:   {performance.get('hit@1', 0):.4f}")
     print(f"  HIT@5:   {performance.get('hit@5', 0):.4f}")
     print(f"  HIT@10:  {performance.get('hit@10', 0):.4f}")
+    print(f"{'='*80}")
+    
+    # Export to CSV for tool comparison
+    csv_path = script_dir / "tool_comparison_summary.csv"
+    tool_name = "BRaIn"
+    timestamp = datetime.now().isoformat()
+    
+    # Calculate MRR and MAP per bug for CSV
+    csv_rows = []
+    for bug in json_bugs:
+        bug_id = bug['bug_id']
+        project = bug['project']
+        ground_truths = bug['fixed_files']
+        search_results = [r['file_url'] for r in bug['es_results'][:10]]
+        
+        # Find rank
+        first_rank = findFirstRank(ground_truths, search_results)
+        detected = "Yes" if first_rank is not None else "No"
+        rank_value = float(first_rank) if first_rank else None
+        
+        # Calculate MRR for this bug (1/rank if found, 0 otherwise)
+        mrr_value = 1.0 / first_rank if first_rank else 0.0
+        
+        # Calculate MAP for this bug (average precision)
+        # MAP = average of precisions at each relevant document position
+        if first_rank:
+            # For single GT file, MAP = 1/rank
+            map_value = 1.0 / first_rank
+        else:
+            map_value = 0.0
+        
+        # Calculate top@K
+        top1 = calculateTopK(ground_truths, search_results, 1)
+        top5 = calculateTopK(ground_truths, search_results, 5)
+        top10 = calculateTopK(ground_truths, search_results, 10)
+        
+        csv_rows.append({
+            'project': project,
+            'bug_id': bug_id,
+            'tool': tool_name,
+            'detected': detected,
+            'rank': rank_value if rank_value else '',
+            'mrr': mrr_value,
+            'map': map_value,
+            'duration_seconds': 'N/A',
+            'execution_timestamp': timestamp,
+            'comparison_timestamp': timestamp,
+            'cpu_avg_percent': '',
+            'cpu_max_percent': '',
+            'memory_avg_bytes': '',
+            'memory_max_bytes': '',
+            'memory_limit_bytes': '',
+            'network_rx_total_bytes': '',
+            'network_tx_total_bytes': '',
+            'disk_read_total_bytes': '',
+            'disk_write_total_bytes': '',
+            'top@1': top1,
+            'top@5': top5,
+            'top@10': top10
+        })
+    
+    # Read existing CSV if it exists
+    existing_rows = []
+    if csv_path.exists():
+        with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            existing_rows = list(reader)
+    
+    # Remove existing BRaIn entries for these bugs
+    bug_keys = {(row['project'], row['bug_id']) for row in csv_rows}
+    existing_rows = [row for row in existing_rows 
+                     if not (row.get('project'), row.get('bug_id')) in bug_keys or row.get('tool') != tool_name]
+    
+    # Combine and write
+    all_rows = existing_rows + csv_rows
+    fieldnames = ['project', 'bug_id', 'tool', 'detected', 'rank', 'mrr', 'map', 'duration_seconds',
+                  'execution_timestamp', 'comparison_timestamp', 'cpu_avg_percent', 'cpu_max_percent',
+                  'memory_avg_bytes', 'memory_max_bytes', 'memory_limit_bytes', 'network_rx_total_bytes',
+                  'network_tx_total_bytes', 'disk_read_total_bytes', 'disk_write_total_bytes',
+                  'top@1', 'top@5', 'top@10']
+    
+    with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_rows)
+    
+    print(f"\n{'='*80}")
+    print(f"CSV EXPORT")
+    print(f"{'='*80}")
+    print(f"Added {len(csv_rows)} BRaIn entries to: {csv_path}")
+    print(f"Total rows in CSV: {len(all_rows)}")
     print(f"{'='*80}")
