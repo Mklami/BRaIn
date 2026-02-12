@@ -28,11 +28,19 @@ def load_json_to_dict(file_path):
 def perform_search(project, sub_project, version, bug_title, bug_description, top_K_results=10):
     # Use index name from config (defaults to 'defects4j' for Defects4J)
     searcher = Searcher()  # Will use index from config file
+    
+    # Handle missing or corrupted bug titles
+    # If title is empty, "No title", "Code", or very short, use description only
+    if not bug_title or bug_title.strip() in ['', 'No title', 'Code'] or len(bug_title.strip()) < 5:
+        query = bug_description
+    else:
+        query = bug_title + '. ' + bug_description
+    
     search_results = searcher.search_Extended(
         project=project,
         sub_project=sub_project,
         version=version,
-        query=bug_title + '. ' + bug_description,
+        query=query,
         top_K_results=top_K_results,
         field_to_return=["file_url", "source_code"]
     )
