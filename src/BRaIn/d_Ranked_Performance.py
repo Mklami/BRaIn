@@ -12,6 +12,7 @@ if str(src_dir) not in sys.path:
 
 from Utils import Performance_Evaluator
 from Utils.IO import JSON_File_IO
+from Utils import EnergyTracker
 
 def normalize_path(path):
     """Normalize file paths for comparison by removing common prefixes and normalizing separators."""
@@ -68,7 +69,8 @@ def calculateTopK(fixed_files, search_results, k):
     return 1 if checkGTExists(fixed_files, top_k_results) else 0
 
 count_of_found_gt = 0
-if __name__ == '__main__':
+def main():
+    global count_of_found_gt
 
     ##### train_test #####
     # Use absolute path relative to script location
@@ -313,3 +315,8 @@ if __name__ == '__main__':
     print(f"Added {len(csv_rows)} BRaIn entries to: {csv_path}")
     print(f"Total rows in CSV: {len(all_rows)}")
     print(f"{'='*80}")
+
+
+if __name__ == '__main__':
+    with EnergyTracker("d_Ranked_Performance", output_dir=str(script_dir / "Output" / "Energy_Logs")):
+        main()

@@ -1,9 +1,11 @@
+codecarbon>=3.2.0
 elasticsearch==8.8.2
 flair==0.12.2
 javalang==0.13.0
 networkx==3.1
 nltk==3.8.1
 numpy>=1.25.1,<2.0.0  # Constrain to <2.0.0 for outlines compatibility
+nvidia-ml-py>=12.550.52  # provides the 'pynvml' module used for direct NVML GPU energy sampling
 pandas==2.0.3
 py4j==0.10.9.7
 PyYAML==6.0.2

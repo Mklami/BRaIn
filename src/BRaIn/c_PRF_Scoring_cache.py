@@ -17,6 +17,7 @@ from IR_Reretrieval import Searcher_RE
 from Utils import Performance_Evaluator
 from Utils.IO import JSON_File_IO
 from TextRank_KW_Search import TextRank
+from Utils import EnergyTracker
 
 # Initialize TextRank
 textRank = TextRank()
@@ -50,7 +51,7 @@ def re_search(bug_id, bug_title, bug_description, top_keywords, project, sub_pro
     return url_score_dict
 
 
-if __name__ == '__main__':
+def main():
     # Make paths robust to current working directory by resolving from repo root.
     # Repo root = <this file>/../../.. (same as script_dir above)
     # Default input is the output of b_Generate_Feedback.py
@@ -190,3 +191,8 @@ if __name__ == '__main__':
     save_file_path = str(script_dir / "Output" / "Cache")
     JSON_File_IO.save_Dict_to_JSON(json_bugs_refined, save_file_path, "Mistral_ZERO_sorted_cache.json", with_indent=True)
     print(f"\nResults saved to: {save_file_path}/Mistral_ZERO_sorted_cache.json")
+
+
+if __name__ == '__main__':
+    with EnergyTracker("c_PRF_Scoring_cache", output_dir=str(script_dir / "Output" / "Energy_Logs")):
+        main()

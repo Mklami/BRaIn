@@ -15,6 +15,7 @@ from Utils import JavaSourceParser
 from Utils.IO import JSON_File_IO
 from IR import Searcher
 from Utils.Parser import SourceRefiner
+from Utils import EnergyTracker
 
 
 def load_dataframe(file_path):
@@ -121,7 +122,7 @@ def search_result_ops(search_results):
 
 import html
 
-if __name__ == '__main__':
+def main():
     # Use absolute path relative to script location
     sample_path = script_dir / "Data" / "Refined_Defects4J.json"
     sample_path = str(sample_path)
@@ -173,4 +174,9 @@ if __name__ == '__main__':
 
         # empty the json_bugs from memory after saving to save memory
         json_bugs = []
+
+
+if __name__ == '__main__':
+    with EnergyTracker("a_Cache_initial_search_files", output_dir=str(script_dir / "Output" / "Energy_Logs")):
+        main()
 

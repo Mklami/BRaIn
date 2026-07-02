@@ -161,6 +161,13 @@ Learn more about PyTorch with CUDA support and working with other versions [here
    d. **Evaluate Performance**:
       - Run `src/BRain/d_Rank_Performance.py` to evaluate the performance of the BRaIn in step-2c. It will return the MAP, MRR, and HIT@K scores for the BRaIn. You can define K (e.g., 1, 5, 10) of HIT@K in the source file.
 
+## Energy Consumption Tracking
+   Each of the four pipeline stages (a-d) is wrapped with `EnergyTracker` (`src/Utils/Energy/EnergyTracker.py`), which measures energy use and estimated carbon emissions for that run using two independent methods:
+   - **CodeCarbon**: tracks CPU/GPU/RAM energy (kWh) and estimated CO2eq emissions, appended to `Output/Energy_Logs/codecarbon_emissions.csv`.
+   - **Direct NVML sampling**: polls the NVIDIA driver directly for per-GPU energy (Joules) and peak power draw, independent of CodeCarbon, used as a cross-check.
+
+   Both are summarized into one row per run in `Output/Energy_Logs/energy_summary.csv`. On machines without an NVIDIA GPU/driver, the GPU fields are recorded as unavailable rather than raising an error.
+
 
 
 ## Citation

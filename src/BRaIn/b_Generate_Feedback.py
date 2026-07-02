@@ -15,6 +15,7 @@ from vllm import LLM, SamplingParams
 from tqdm import tqdm
 from Utils import JSON_File_IO
 from transformers import AutoTokenizer
+from Utils import EnergyTracker
 
 
 def load_dataframe(file_path):
@@ -163,7 +164,8 @@ MODEL_PATH = "src/BRaIn/Mistral-7B-Instruct-v0.2-GPTQ"
 # Alternative: Use local model (may have compatibility issues with some vLLM versions)
 # MODEL_PATH = str(Path(__file__).parent / "Mistral-7B-Instruct-v0.2-GPTQ")
 
-if __name__ == '__main__':
+def main():
+    global MODEL_PATH
     # Validate model path (only check file system if it's a local path)
     is_huggingface_model = '/' in MODEL_PATH and not MODEL_PATH.startswith('/') and not os.path.exists(MODEL_PATH)
     
@@ -439,3 +441,8 @@ if __name__ == '__main__':
     print(f"Processed in this run: {processed_count}")
     JSON_File_IO.save_Dict_to_JSON(json_bugs, json_save_path, "Mistral_ZERO.json")
     print(f"Results saved to: {output_file}")
+
+
+if __name__ == '__main__':
+    with EnergyTracker("b_Generate_Feedback", output_dir=str(script_dir / "Output" / "Energy_Logs")):
+        main()
