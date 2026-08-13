@@ -1,4 +1,5 @@
 import csv
+import os
 import threading
 import time
 from datetime import datetime
@@ -14,15 +15,38 @@ except ImportError as e:
     _PYNVML_IMPORT_ERROR = e
 
 
+def _resolve_visible_gpu_ids():
+    """
+    Parses CUDA_VISIBLE_DEVICES into the list of GPU identifiers this process is
+    actually restricted to (indices or UUID/MIG-UUID strings), or None if unset
+    (meaning no restriction - all GPUs on the machine are fair game).
+
+    This matters because NVML device enumeration is NOT scoped by
+    CUDA_VISIBLE_DEVICES - that env var only restricts what CUDA/PyTorch can
+    compute on. Without this, both our own NVML sampling and CodeCarbon's GPU
+    tracking silently measure every physical GPU on the box, including whatever
+    other users' jobs are running on GPUs this process never touches.
+    """
+    raw = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if raw is None or raw.strip() == "":
+        return None
+    ids = [x.strip() for x in raw.split(",") if x.strip() != ""]
+    return ids if ids else None
+
+
 class _NVMLSampler:
     """
     Polls NVML directly (independent of CodeCarbon) to record per-GPU energy and
     peak power draw for a run. Uses the hardware energy counter
     (nvmlDeviceGetTotalEnergyConsumption) when the GPU supports it (Volta+), and
     falls back to trapezoidal integration of sampled power draw otherwise.
+
+    Only samples the GPU(s) this process is actually restricted to via
+    CUDA_VISIBLE_DEVICES (see _resolve_visible_gpu_ids), not every GPU on the
+    machine - otherwise readings include other users' jobs on a shared node.
     """
 
-    def __init__(self, interval_sec=1.0):
+    def __init__(self, interval_sec=1.0, visible_gpu_ids=None):
         self.interval_sec = interval_sec
         self.available = False
         self._stop_event = threading.Event()
@@ -45,7 +69,9 @@ class _NVMLSampler:
             print(f"[EnergyTracker] NVML unavailable ({e}). Skipping direct NVML GPU sampling.")
             return
 
-        for i in range(count):
+        indices = self._resolve_indices(count, visible_gpu_ids)
+
+        for i in indices:
             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
             name = pynvml.nvmlDeviceGetName(handle)
             if isinstance(name, bytes):
@@ -55,7 +81,43 @@ class _NVMLSampler:
             self._power_energy_joules.append(0.0)
             self._peak_power_w.append(0.0)
 
-        self.available = count > 0
+        self.available = len(self._handles) > 0
+
+    @staticmethod
+    def _resolve_indices(count, visible_gpu_ids):
+        """Maps CUDA_VISIBLE_DEVICES entries to physical NVML device indices."""
+        if visible_gpu_ids is None:
+            return list(range(count))
+
+        uuid_by_index = {}
+        resolved = []
+        for entry in visible_gpu_ids:
+            if entry.isdigit():
+                idx = int(entry)
+                if 0 <= idx < count:
+                    resolved.append(idx)
+                else:
+                    print(f"[EnergyTracker] CUDA_VISIBLE_DEVICES index {idx} out of range "
+                          f"[0, {count}); ignoring.")
+                continue
+
+            # Not a plain index - treat as a GPU/MIG UUID (possibly truncated).
+            if not uuid_by_index:
+                for i in range(count):
+                    uuid = pynvml.nvmlDeviceGetUUID(pynvml.nvmlDeviceGetHandleByIndex(i))
+                    uuid_by_index[i] = uuid.decode() if isinstance(uuid, bytes) else uuid
+            stripped = entry[len("MIG-"):] if entry.startswith("MIG-") else entry
+            match = next((i for i, uuid in uuid_by_index.items() if uuid.startswith(stripped)), None)
+            if match is not None:
+                resolved.append(match)
+            else:
+                print(f"[EnergyTracker] CUDA_VISIBLE_DEVICES entry '{entry}' did not match any GPU UUID; ignoring.")
+
+        if not resolved:
+            print("[EnergyTracker] Could not resolve any GPU from CUDA_VISIBLE_DEVICES "
+                  f"({visible_gpu_ids}); falling back to monitoring all {count} GPU(s).")
+            return list(range(count))
+        return sorted(set(resolved))
 
     def _sample_loop(self):
         last_time = time.time()
@@ -156,7 +218,8 @@ class EnergyTracker:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.summary_csv = self.output_dir / "energy_summary.csv"
         self._codecarbon_tracker = None
-        self._nvml_sampler = _NVMLSampler(interval_sec=nvml_interval_sec)
+        self._visible_gpu_ids = _resolve_visible_gpu_ids()
+        self._nvml_sampler = _NVMLSampler(interval_sec=nvml_interval_sec, visible_gpu_ids=self._visible_gpu_ids)
         self._start_time = None
 
     def __enter__(self):
@@ -171,6 +234,7 @@ class EnergyTracker:
                 save_to_file=True,
                 log_level="error",
                 tracking_mode="process",
+                gpu_ids=self._visible_gpu_ids,
             )
             self._codecarbon_tracker.start()
         except Exception as e:
@@ -218,6 +282,7 @@ class EnergyTracker:
             "end_time": end_time.isoformat(),
             "duration_sec": round(duration_sec, 3),
             "status": status,
+            "cuda_visible_devices": "; ".join(self._visible_gpu_ids) if self._visible_gpu_ids else "unset (all GPUs)",
             "codecarbon_energy_kwh": codecarbon_kwh,
             "codecarbon_co2eq_kg": codecarbon_co2_kg,
             "nvml_gpu_available": nvml_result.get("gpu_available", False),
