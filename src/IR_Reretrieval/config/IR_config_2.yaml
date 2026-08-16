@@ -1,5 +1,5 @@
 elasticsearch:
-  host: localhost # default: please don't change this if not necessary
+  host: gpu4 # default: please don't change this if not necessary
   port: 9200 # default: please don't change this if not necessary
 #  index_name: bench4bl_3 # NECESSARY: change this to your index name.
 #  index_name: bench4bl_full # NECESSARY: change this to your index name.
